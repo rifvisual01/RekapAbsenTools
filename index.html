@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Attendance Converter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Tools Internal F&B</p>
+          <h1>Smart Attendance Converter</h1>
+        </div>
+        <div class="topbar__status">
+          <span class="status-dot"></span>
+          Prototype siap dipakai
+        </div>
+      </header>
+
+      <main class="workspace">
+        <nav class="stepper" aria-label="Progress wizard">
+          <button class="step is-active" data-step-target="upload" type="button">
+            <span>1</span>
+            Upload
+          </button>
+          <button class="step" data-step-target="review" type="button">
+            <span>2</span>
+            Review
+          </button>
+          <button class="step" data-step-target="setting" type="button">
+            <span>3</span>
+            Setting
+          </button>
+          <button class="step" data-step-target="export" type="button">
+            <span>4</span>
+            Export
+          </button>
+        </nav>
+
+        <section class="panel step-panel is-active" id="upload" data-step="upload">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Langkah 1</p>
+              <h2>Upload Data Mentah</h2>
+              <p>
+                Upload file Excel mentah dari mesin kasir untuk diproses menjadi
+                laporan kehadiran.
+              </p>
+            </div>
+            <button class="btn btn-secondary" id="resetFile" type="button">Reset File</button>
+          </div>
+
+          <div class="card work-rules-card">
+            <div class="card-head">
+              <div>
+                <h3>Acuan Waktu Kerja</h3>
+                <p class="field-help">Atur jam per hari dulu agar sistem bisa membaca dan memprediksi shift dari file upload.</p>
+              </div>
+              <button class="btn btn-secondary btn-small" id="applyWorkRules" type="button">
+                Terapkan Acuan
+              </button>
+            </div>
+            <div class="work-rules-table">
+              <div class="work-rules-row work-rules-row-head">
+                <span>Acuan</span>
+                <span>Shift 1 Masuk</span>
+                <span>Shift 1 Pulang</span>
+                <span>Shift 2 Masuk</span>
+                <span>Shift 2 Pulang</span>
+                <span>Toleransi</span>
+              </div>
+              <div id="workRulesRows"></div>
+            </div>
+          </div>
+
+          <div class="upload-section">
+            <div class="upload-box" id="dropzone">
+              <div class="upload-icon" aria-hidden="true">↑</div>
+              <h3>Tarik file Excel ke sini</h3>
+              <p>Upload file absensi dari mesin kasir: .xls, .xlsx, .csv, .tsv, atau .txt.</p>
+              <label class="btn btn-primary" for="fileInput">Pilih File</label>
+              <input id="fileInput" type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" />
+              <small id="fileName">Belum ada file dipilih</small>
+            </div>
+          </div>
+
+          <div class="actions process-actions">
+            <button class="btn btn-primary" data-next="review" type="button">Proses Data</button>
+          </div>
+        </section>
+
+        <section class="panel step-panel" id="review" data-step="review">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Langkah 2</p>
+              <h2>Review Hasil Convert</h2>
+              <p>Periksa hasil pembacaan otomatis sebelum dipakai untuk rekap gaji.</p>
+            </div>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric">
+              <span>Total data terbaca</span>
+              <strong>0</strong>
+            </div>
+            <div class="metric metric-safe">
+              <span>Data aman</span>
+              <strong>0</strong>
+            </div>
+            <div class="metric metric-warn">
+              <span>Perlu review</span>
+              <strong>0</strong>
+            </div>
+          </div>
+
+          <div class="review-layout">
+            <div class="card">
+              <div class="card-head">
+                <h3>Tabel Review Kehadiran</h3>
+                <div class="review-tools">
+                  <label>
+                    Filter Nama
+                    <select id="reviewNameFilter">
+                      <option>Semua Staff</option>
+                    </select>
+                  </label>
+                  <span class="pill">April 2026</span>
+                </div>
+              </div>
+              <div class="table-wrap wide">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nama</th>
+                      <th>Tanggal</th>
+                      <th>Jam Scan Terdeteksi</th>
+                      <th>Masuk</th>
+                      <th>Pulang</th>
+                      <th>Shift</th>
+                      <th>Hari Kerja</th>
+                      <th>Lembur</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reviewRows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <aside class="card attention-card">
+              <div class="card-head">
+                <h3>Perlu Perhatian</h3>
+                <span class="pill pill-warning" id="attentionCount">0 item</span>
+              </div>
+              <div id="attentionList" class="attention-list"></div>
+            </aside>
+          </div>
+
+          <div class="actions split">
+            <button class="btn btn-ghost" data-next="upload" type="button">Kembali ke Upload</button>
+            <button class="btn btn-primary" data-next="setting" type="button">Lanjut ke Setting</button>
+          </div>
+        </section>
+
+        <section class="panel step-panel" id="setting" data-step="setting">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Langkah 3</p>
+              <h2>Setting Staff, Waktu, dan Gaji</h2>
+              <p>Atur data dasar yang dipakai untuk menghitung hari kerja dan gaji.</p>
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <div class="card">
+              <div class="card-head">
+                <h3>Data Staff</h3>
+                <button class="btn btn-secondary btn-small" data-action="add-staff" type="button">
+                  Tambah Staff
+                </button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nama Staff</th>
+                      <th>Gaji Pokok / 30 Hari</th>
+                      <th>Konsumsi / Hari</th>
+                      <th>Bonus</th>
+                      <th>Bon</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="staffRows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <aside class="card formula-card">
+              <div class="card-head">
+                <h3>Bonus Capai Target</h3>
+                <button class="btn btn-secondary btn-small" id="applyTargetBonus" type="button">
+                  Terapkan Bonus
+                </button>
+              </div>
+              <div class="formula-grid">
+                <label>
+                  Total Bonus Target
+                  <input id="targetBonusPool" class="money-input" inputmode="numeric" value="Rp 2.000.000" />
+                </label>
+                <label>
+                  Metode Pembagian
+                  <select id="bonusMode">
+                    <option value="attendance">Proporsional Kehadiran</option>
+                    <option value="equal">Rata Semua Staff</option>
+                  </select>
+                </label>
+              </div>
+              <p class="field-help">
+                Bonus target akan dibagi ke staff. Mode proporsional memberi bagian lebih besar ke staff dengan hari kerja lebih banyak.
+              </p>
+              <div class="bonus-preview" id="bonusPreview">Upload data dan klik Terapkan Bonus untuk melihat pembagian.</div>
+            </aside>
+          </div>
+
+          <div class="actions split">
+            <button class="btn btn-ghost" data-next="review" type="button">Kembali ke Review</button>
+            <div class="action-group">
+              <button class="btn btn-secondary" data-action="save-setting" type="button">Simpan Setting</button>
+              <button class="btn btn-primary" data-next="export" type="button">Lanjut ke Export</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel step-panel" id="export" data-step="export">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Langkah 4</p>
+              <h2>Export Laporan Jadi</h2>
+              <p>Pilih staff dan bulan, lalu simpan laporan sebagai gambar.</p>
+            </div>
+          </div>
+
+          <div class="filter-bar">
+            <label>
+              Pilih Staff
+              <select id="staffFilter">
+                <option>Semua Staff</option>
+              </select>
+            </label>
+            <label>
+              Pilih Bulan
+              <select id="monthFilter">
+                <option>April 2026</option>
+                <option>Mei 2026</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="export-grid">
+            <div class="card">
+              <div class="card-head">
+                <h3>Preview Laporan Kehadiran</h3>
+                <span class="pill">Siap export</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nama</th>
+                      <th>Tanggal</th>
+                      <th>Masuk</th>
+                      <th>Pulang</th>
+                      <th>Shift</th>
+                      <th>Status</th>
+                      <th>Lembur</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attendanceRows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h3>Preview Rekap Gaji</h3>
+                <span class="pill">Payroll</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nama Staff</th>
+                      <th>Hari Kerja</th>
+                      <th>Hari Lembur</th>
+                      <th>Gaji Pokok Prorata</th>
+                      <th>Konsumsi</th>
+                      <th>Bonus Target</th>
+                      <th>Bonus</th>
+                      <th>Bon</th>
+                      <th>Total Diterima</th>
+                    </tr>
+                  </thead>
+                  <tbody id="salaryRows"></tbody>
+                </table>
+              </div>
+              <div class="manual-payroll-addition">
+                <label>
+                  Tambahan Manual
+                  <input id="manualPayrollAmount" class="money-input" inputmode="numeric" value="Rp 0" />
+                </label>
+                <label>
+                  Keterangan
+                  <input id="manualPayrollNote" type="text" placeholder="Contoh: pengganti transport, koreksi kasbon, dll." />
+                </label>
+              </div>
+              <p class="field-help" id="manualPayrollPreview">Tambahan manual belum diisi.</p>
+            </div>
+          </div>
+
+          <div class="final-preview" id="finalPreview">
+            <div>
+              <p class="eyebrow">Preview Gambar Final</p>
+              <h3>Laporan Kehadiran & Rekap Gaji - April 2026</h3>
+            </div>
+            <div class="preview-summary">
+              <span>4 staff</span>
+              <span>87 hari kerja</span>
+              <span>14 lembur</span>
+              <strong>Rp12.320.000</strong>
+            </div>
+          </div>
+
+          <div class="actions split">
+            <button class="btn btn-ghost" data-next="setting" type="button">Kembali ke Setting</button>
+            <div class="action-group">
+              <button class="btn btn-primary" data-export="all-png" type="button">Export Laporan</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite" aria-label="Notifikasi"></div>
+
+    <script src="xlsx.full.min.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
