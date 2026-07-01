@@ -788,9 +788,14 @@ tbody tr:last-child td {
   border-radius: 999px;
   background: #fff1f2;
   color: var(--primary-dark);
-  font-size: 16px;
+  font-size: 0;
   font-weight: 900;
   line-height: 1;
+}
+
+.chip-remove::before {
+  content: "X";
+  font-size: 12px;
 }
 
 .chip-remove:hover {
