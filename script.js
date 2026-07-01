@@ -1153,7 +1153,13 @@ function findBestShiftMatch(firstTime, lastTime, date) {
   const tolerance = rule.tolerance;
   if (last < first) last += 1440;
 
-  if (first <= shift1In + tolerance && last >= shift2Out - tolerance) {
+  const doubleShiftStartWindow = Math.max(90, tolerance * 6);
+  const doubleShiftOutWindow = Math.max(15, tolerance * 3);
+  const looksLikeDoubleShift =
+    first <= shift1In + doubleShiftStartWindow &&
+    last >= shift2Out - doubleShiftOutWindow;
+
+  if (looksLikeDoubleShift) {
     return { shift: "Shift 1 + Shift 2", score: 0 };
   }
 
@@ -1164,7 +1170,18 @@ function findBestShiftMatch(firstTime, lastTime, date) {
   ].map((candidate) => ({
     shift: candidate.shift,
     score: scoreShiftPair(first, last, candidate.in, candidate.out, tolerance),
-  }));
+  })).map((candidate) => {
+    if (candidate.shift === "Shift 2") {
+      const earlyShift2Limit = shift2In - Math.max(60, tolerance * 6);
+      if (first < earlyShift2Limit) {
+        return {
+          ...candidate,
+          score: candidate.score + (shift2In - first),
+        };
+      }
+    }
+    return candidate;
+  });
 
   return candidates.sort((a, b) => a.score - b.score)[0] || { shift: "Shift terdeteksi", score: Number.MAX_SAFE_INTEGER };
 }
@@ -1755,13 +1772,17 @@ function renderBonusPreview() {
   }
 
   container.innerHTML = participants
-    .map(([name, workday, , , , targetBonus]) => `
+    .map(([name, workday, overtime, , , targetBonus]) => {
+      const paidDays = workday + overtime;
+      const dayLabel = overtime ? `${paidDays} hari bonus (${workday} HK + ${overtime} L)` : `${paidDays} hari bonus`;
+      return `
       <span class="bonus-chip">
         <span>${name}: <strong>${currency.format(targetBonus)}</strong></span>
-        <small>${workday} hari</small>
+        <small>${dayLabel}</small>
         <button class="chip-remove" data-target-bonus-remove="${name}" type="button" aria-label="Keluarkan ${name} dari bonus target">×</button>
       </span>
-    `)
+      `;
+    })
     .join("");
 }
 
