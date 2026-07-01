@@ -132,6 +132,7 @@
                       <option>Semua Staff</option>
                     </select>
                   </label>
+                  <button class="mini-btn is-selected" data-action="add-manual-scan" type="button">Tambah Scan Manual</button>
                   <span class="pill">April 2026</span>
                 </div>
               </div>
@@ -148,6 +149,7 @@
                       <th>Hari Kerja</th>
                       <th>Lembur</th>
                       <th>Status</th>
+                      <th>Aksi</th>
                     </tr>
                   </thead>
                   <tbody id="reviewRows"></tbody>
@@ -166,7 +168,10 @@
 
           <div class="actions split">
             <button class="btn btn-ghost" data-next="upload" type="button">Kembali ke Upload</button>
-            <button class="btn btn-primary" data-next="setting" type="button">Lanjut ke Setting</button>
+            <div class="actions">
+              <button class="btn btn-secondary" data-export-fixed-xls type="button">Export XLS Hasil Koreksi</button>
+              <button class="btn btn-primary" data-next="setting" type="button">Lanjut ke Setting</button>
+            </div>
           </div>
         </section>
 
@@ -194,7 +199,7 @@
                       <th>Nama Staff</th>
                       <th>Gaji Pokok / 30 Hari</th>
                       <th>Konsumsi / Hari</th>
-                      <th>Bonus</th>
+                      <th>Bonus / 30 Hari</th>
                       <th>Bon</th>
                       <th>Aksi</th>
                     </tr>
@@ -224,9 +229,20 @@
                   </select>
                 </label>
               </div>
-              <p class="field-help">
-                Bonus target akan dibagi ke staff. Mode proporsional memberi bagian lebih besar ke staff dengan hari kerja lebih banyak.
-              </p>
+                <p class="field-help">
+                  Bonus target dibagi berdasarkan hari bonus, yaitu hari kerja + lembur. Mode proporsional memberi bagian lebih besar ke staff dengan total hari bonus lebih banyak.
+                </p>
+              <div class="bonus-manual-form">
+                <label>
+                  Nama Staff
+                  <input id="targetBonusName" type="text" placeholder="Nama staff tambahan" />
+                </label>
+                <label>
+                  Hari Kerja
+                  <input id="targetBonusWorkday" inputmode="numeric" placeholder="0" />
+                </label>
+                <button class="mini-btn is-selected" id="addTargetBonusStaff" type="button">Tambah Peserta</button>
+              </div>
               <div class="bonus-preview" id="bonusPreview">Upload data dan klik Terapkan Bonus untuk melihat pembagian.</div>
             </aside>
           </div>
@@ -305,7 +321,7 @@
                       <th>Gaji Pokok Prorata</th>
                       <th>Konsumsi</th>
                       <th>Bonus Target</th>
-                      <th>Bonus</th>
+                      <th>Bonus Prorata</th>
                       <th>Bon</th>
                       <th>Total Diterima</th>
                     </tr>
