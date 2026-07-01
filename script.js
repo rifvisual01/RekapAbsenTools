@@ -6,12 +6,16 @@ let activeSalaryData = [];
 let activeStaffData = [];
 let activeReviewNameFilter = "Semua Staff";
 let editingStaffName = null;
+let editingReviewRowId = null;
 let editingExportRowId = null;
+let isAddingManualScan = false;
 let toastTimer = null;
 let targetBonusConfig = {
   pool: 2000000,
   mode: "attendance",
 };
+let excludedTargetBonusNames = new Set();
+let manualTargetBonusParticipants = [];
 let manualPayrollAddition = {
   amount: 0,
   note: "",
@@ -93,7 +97,8 @@ function statusBadge(status) {
 
 function renderReview() {
   const rows = getFilteredReviewRows();
-  document.getElementById("reviewRows").innerHTML = rows.length
+  const manualScanRow = isAddingManualScan ? renderManualScanFormRow() : "";
+  const dataRows = rows.length
     ? rows
     .map(
       (row) => `
@@ -107,11 +112,21 @@ function renderReview() {
           <td>${row.workday}</td>
           <td>${row.overtime}</td>
           <td>${statusBadge(row.status)}</td>
+          <td>
+            <button class="mini-btn" data-review-row-edit="${row.id}" type="button">Edit</button>
+            <button class="mini-btn" data-review-row-delete="${row.id}" type="button">Hapus</button>
+          </td>
         </tr>
+        ${editingReviewRowId === row.id ? `
+          <tr class="attendance-edit-row">
+            <td colspan="10">${renderManualEditForm(row, { formType: "review" })}</td>
+          </tr>
+        ` : ""}
       `,
     )
     .join("")
-    : `<tr><td colspan="9">Tidak ada data untuk filter nama ini.</td></tr>`;
+    : `<tr><td colspan="10">Tidak ada data untuk filter nama ini.</td></tr>`;
+  document.getElementById("reviewRows").innerHTML = manualScanRow + dataRows;
   renderMetrics();
 }
 
@@ -162,21 +177,28 @@ function renderAttentionItem(item) {
 }
 
 function renderManualEditForm(row, options = {}) {
+  const formClass = options.formType === "export" || options.formType === "review"
+    ? "is-inline-edit"
+    : "is-attention-edit";
   const formAttr = options.formType === "export"
     ? `data-export-form="${row.id}"`
-    : `data-manual-form="${row.id}"`;
+    : options.formType === "review"
+      ? `data-review-form="${row.id}"`
+      : `data-manual-form="${row.id}"`;
   const cancelAttr = options.formType === "export"
     ? `data-export-cancel="${row.id}"`
-    : `data-manual-cancel="${row.id}"`;
+    : options.formType === "review"
+      ? `data-review-table-cancel="${row.id}"`
+      : `data-manual-cancel="${row.id}"`;
   return `
-    <form class="manual-edit-form ${options.formType === "export" ? "is-export-edit" : ""}" ${formAttr}>
+    <form class="manual-edit-form ${formClass} ${options.formType === "export" ? "is-export-edit" : ""}" ${formAttr}>
       <label>
         Masuk
         <select name="inMode" data-scan-mode="in">
           <option value="scan" ${row.in !== "-" ? "selected" : ""}>Pakai Jam Scan</option>
           <option value="none" ${row.in === "-" ? "selected" : ""}>Tanpa Scan</option>
         </select>
-        <input name="in" value="${row.in === "-" ? "" : row.in}" placeholder="11:00" />
+        <input name="in" value="${row.in === "-" ? "" : row.in}" placeholder="11:00" ${row.in === "-" ? "disabled" : ""} />
       </label>
       <label>
         Pulang
@@ -184,7 +206,7 @@ function renderManualEditForm(row, options = {}) {
           <option value="scan" ${row.out !== "-" ? "selected" : ""}>Pakai Jam Scan</option>
           <option value="none" ${row.out === "-" ? "selected" : ""}>Tanpa Scan</option>
         </select>
-        <input name="out" value="${row.out === "-" ? "" : row.out}" placeholder="23:00" />
+        <input name="out" value="${row.out === "-" ? "" : row.out}" placeholder="23:00" ${row.out === "-" ? "disabled" : ""} />
       </label>
       <label>
         Shift
@@ -195,19 +217,64 @@ function renderManualEditForm(row, options = {}) {
           <option ${row.shift === "Shift terdeteksi" ? "selected" : ""}>Shift terdeteksi</option>
         </select>
       </label>
-      <div class="auto-result">
-        <span>Hari Kerja</span>
-        <strong data-auto-workday>${row.workday}</strong>
-      </div>
-      <div class="auto-result">
-        <span>Lembur</span>
-        <strong data-auto-overtime>${row.overtime}</strong>
-      </div>
       <div class="manual-edit-actions">
         <button class="mini-btn is-selected" data-manual-save="${row.id}" type="submit">Simpan Koreksi</button>
         <button class="mini-btn" ${cancelAttr} type="button">Batal</button>
       </div>
     </form>
+  `;
+}
+
+function renderManualScanFormRow() {
+  const names = [...new Set([...activeStaffData.map(([name]) => name), ...activeReviewData.map((row) => row.name)])];
+  const defaultName = activeReviewNameFilter !== "Semua Staff" ? activeReviewNameFilter : names[0] || "";
+  const defaultDate = getFilteredReviewRows()[0]?.date || activeReviewData[0]?.date || "";
+  return `
+    <tr class="attendance-edit-row">
+      <td colspan="10">
+        <form class="manual-scan-form" data-manual-scan-form>
+          <label>
+            Nama
+            <select name="name" required>
+              ${names.map((name) => `<option ${name === defaultName ? "selected" : ""}>${name}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Tanggal
+            <input name="date" value="${defaultDate}" placeholder="02/04/2026" required />
+          </label>
+          <label>
+            Masuk
+            <select name="inMode" data-scan-mode="in">
+              <option value="scan">Pakai Jam Scan</option>
+              <option value="none">Tanpa Scan</option>
+            </select>
+            <input name="in" placeholder="16:57" />
+          </label>
+          <label>
+            Pulang
+            <select name="outMode" data-scan-mode="out">
+              <option value="scan">Pakai Jam Scan</option>
+              <option value="none">Tanpa Scan</option>
+            </select>
+            <input name="out" placeholder="23:00" />
+          </label>
+          <label>
+            Shift
+            <select name="shift">
+              <option>Otomatis</option>
+              <option>Shift 1</option>
+              <option>Shift 2</option>
+              <option>Shift 1 + Shift 2</option>
+            </select>
+          </label>
+          <div class="manual-edit-actions">
+            <button class="mini-btn is-selected" type="submit">Simpan Scan</button>
+            <button class="mini-btn" data-manual-scan-cancel type="button">Batal</button>
+          </div>
+        </form>
+      </td>
+    </tr>
   `;
 }
 
@@ -550,7 +617,7 @@ async function readUploadedRows(file) {
       raw: false,
     });
 
-    return parseMatrixRows(matrix);
+    return parseCorrectedReviewRows(matrix) || parseMatrixRows(matrix);
   }
 
   throw new Error("Format belum didukung. Gunakan .xls, .xlsx, .csv, .tsv, atau .txt.");
@@ -562,9 +629,10 @@ function loadRows(parsedRows, sourceName) {
     return;
   }
 
-  uploadedRows = parsedRows;
   activeWorkRules = readWorkRulesFromForm();
-  activeReviewData = convertUploadedRows(uploadedRows);
+  const isCorrectedReview = parsedRows[0]?.__reviewRow;
+  uploadedRows = isCorrectedReview ? [] : parsedRows;
+  activeReviewData = isCorrectedReview ? parsedRows.map(({ __reviewRow, ...row }) => row) : convertUploadedRows(uploadedRows);
   activeReviewNameFilter = "Semua Staff";
   activeAttentionItems = buildAttentionFromUpload(activeReviewData);
   activeStaffData = buildStaffFromReview(activeReviewData);
@@ -604,7 +672,8 @@ function parseTableText(text) {
 
   const [headerLine, ...dataLines] = lines;
   const delimiter = detectDelimiter(headerLine);
-  return parseMatrixRows([parseCsvLine(headerLine, delimiter), ...dataLines.map((line) => parseCsvLine(line, delimiter))]);
+  const matrix = [parseCsvLine(headerLine, delimiter), ...dataLines.map((line) => parseCsvLine(line, delimiter))];
+  return parseCorrectedReviewRows(matrix) || parseMatrixRows(matrix);
 }
 
 function parseMatrixRows(matrix) {
@@ -644,6 +713,50 @@ function parseMatrixRows(matrix) {
     .filter((row) => row.name !== "-" && row.time !== "-");
 }
 
+function parseCorrectedReviewRows(matrix) {
+  const normalizedRows = matrix
+    .map((row) => row.map((cell) => String(cell ?? "").trim()))
+    .filter((row) => row.some(Boolean));
+  if (!normalizedRows.length) return null;
+
+  const headers = normalizedRows[0].map((header) => header.toLowerCase());
+  const findIndex = (keywords) => headers.findIndex((header) => keywords.some((keyword) => header.includes(keyword)));
+  const nameIndex = findIndex(["nama"]);
+  const dateIndex = findIndex(["tanggal"]);
+  const inIndex = findIndex(["masuk"]);
+  const outIndex = findIndex(["pulang"]);
+  const shiftIndex = findIndex(["shift"]);
+  const statusIndex = findIndex(["status"]);
+  const scanIndex = findIndex(["jam scan"]);
+  const workdayIndex = findIndex(["hari kerja"]);
+  const overtimeIndex = findIndex(["lembur"]);
+
+  if ([nameIndex, dateIndex, inIndex, outIndex, shiftIndex, statusIndex].some((index) => index < 0)) return null;
+
+  return normalizedRows.slice(1).map((cells, index) => {
+    const inTime = normalizeTimeInput(cells[inIndex]) || "-";
+    const outTime = normalizeTimeInput(cells[outIndex]) || "-";
+    const shift = cells[shiftIndex] || inferShiftFromTimes([inTime, outTime].filter((time) => time !== "-"), cells[dateIndex]);
+    const calculated = calculateWorkResult(shift, inTime, outTime, cells[dateIndex]);
+    return {
+      __reviewRow: true,
+      id: `corrected-${index + 1}`,
+      name: cells[nameIndex] || "-",
+      date: cells[dateIndex] || "-",
+      scan: cells[scanIndex] || mergeScanTimes("", [inTime, outTime]) || "-",
+      in: inTime,
+      out: outTime,
+      shift,
+      workday: Number(cells[workdayIndex]) || calculated.workday,
+      overtime: Number(cells[overtimeIndex]) || calculated.overtime,
+      status: cells[statusIndex] || calculated.status,
+      issue: "",
+      recommendation: "",
+      suggestion: null,
+    };
+  }).filter((row) => row.name !== "-" && row.date !== "-");
+}
+
 function mergeDateTime(dateValue, timeValue) {
   const date = String(dateValue || "").trim();
   const time = String(timeValue || "").trim();
@@ -656,21 +769,26 @@ function mergeDateTime(dateValue, timeValue) {
 
 function buildSalaryFromReview(rows) {
   const summary = rows.reduce((result, row) => {
-    result[row.name] ||= { workday: 0, overtime: 0 };
+    result[row.name] ||= { workday: 0, overtime: 0, late: 0 };
     result[row.name].workday += isPayrollWorkday(row) ? 1 : 0;
     result[row.name].overtime += row.overtime;
+    if (String(row.status || "").includes("Terlambat")) result[row.name].late += 1;
     return result;
   }, {});
+  manualTargetBonusParticipants.forEach(({ name, workday }) => {
+    if (!summary[name]) summary[name] = { workday, overtime: 0, late: 0, bonusOnly: true };
+  });
   const targetShares = calculateTargetBonusShares(summary);
 
   return Object.entries(summary).map(([name, value]) => {
     const staff = activeStaffData.find(([staffName]) => staffName === name);
-    const monthlyBase = staff?.[1] || 0;
+    const monthlyBase = value.bonusOnly ? 0 : staff?.[1] || 0;
     const paidDays = value.workday + value.overtime;
     const base = calculateProratedBase(monthlyBase, paidDays);
-    const mealPerDay = staff?.[2] || 15000;
-    const extra = staff?.[3] || 0;
-    const debt = staff?.[4] || 0;
+    const mealPerDay = value.bonusOnly ? 0 : staff?.[2] || 15000;
+    const monthlyBonus = staff?.[3] || 0;
+    const extra = value.bonusOnly ? 0 : calculateProratedBonus(monthlyBonus, paidDays, value.late);
+    const debt = value.bonusOnly ? 0 : staff?.[4] || 0;
     const meal = paidDays * mealPerDay;
     return [name, value.workday, value.overtime, base, meal, targetShares[name] || 0, extra, debt];
   });
@@ -683,6 +801,7 @@ function buildStaffFromReview(rows) {
 
 function isPayrollWorkday(row) {
   if (!row || row.status === "Tidak Absen") return false;
+  if (String(row.status || "").includes("Tidak Scan Masuk")) return true;
   return Boolean((row.in && row.in !== "-") || (row.out && row.out !== "-") || (row.scan && row.scan !== "-"));
 }
 
@@ -692,6 +811,19 @@ function calculateSalaryTotal(values) {
 
 function calculateProratedBase(monthlyBase, workday) {
   return Math.round((Number(monthlyBase) || 0) / 30 * (Number(workday) || 0));
+}
+
+function calculateProratedBonus(monthlyBonus, paidDays, lateCount) {
+  const rawBonus = calculateProratedBase(monthlyBonus, paidDays);
+  return Math.round(rawBonus * getLateBonusMultiplier(lateCount));
+}
+
+function getLateBonusMultiplier(lateCount) {
+  const count = Number(lateCount) || 0;
+  if (count <= 5) return 1;
+  if (count <= 9) return 0.8;
+  if (count <= 12) return 0.6;
+  return 0.4;
 }
 
 function renderManualPayrollPreview() {
@@ -717,17 +849,18 @@ function syncManualPayrollAdditionFromForm() {
 }
 
 function calculateTargetBonusShares(summary) {
-  const names = Object.keys(summary);
+  const names = Object.keys(summary).filter((name) => !excludedTargetBonusNames.has(name));
   if (!names.length || !targetBonusConfig.pool) return {};
 
-  const totalAttendance = names.reduce((sum, name) => sum + (summary[name]?.workday || 0), 0);
+  const getPaidDays = (name) => (summary[name]?.workday || 0) + (summary[name]?.overtime || 0);
+  const totalAttendance = names.reduce((sum, name) => sum + getPaidDays(name), 0);
   const equalShare = Math.round(targetBonusConfig.pool / names.length);
 
   return names.reduce((shares, name) => {
     const weight = targetBonusConfig.mode === "equal"
       ? 1 / names.length
       : totalAttendance
-        ? (summary[name]?.workday || 0) / totalAttendance
+        ? getPaidDays(name) / totalAttendance
         : 1 / names.length;
     shares[name] = targetBonusConfig.mode === "equal" ? equalShare : Math.round(targetBonusConfig.pool * weight);
     return shares;
@@ -1039,7 +1172,7 @@ function findBestShiftMatch(firstTime, lastTime, date) {
 function scoreShiftPair(first, last, scheduledIn, scheduledOut, tolerance) {
   const earlyArrivalPenalty = Math.max(0, first - scheduledIn - tolerance);
   const earlyLeavePenalty = Math.max(0, scheduledOut - last - tolerance);
-  const lateLeavePenalty = Math.max(0, last - scheduledOut - 90);
+  const lateLeavePenalty = Math.max(0, last - scheduledOut - (scheduledOut > 20 * 60 ? 75 : 120));
   return earlyArrivalPenalty + earlyLeavePenalty + lateLeavePenalty;
 }
 
@@ -1161,6 +1294,22 @@ function downloadReport(type) {
     ctx.font = "800 18px Inter, Arial, sans-serif";
     ctx.fillText(titleText, x + 38, y + 47);
   };
+  const wrapText = (text, maxChars = 20) => {
+    const words = String(text ?? "-").split(/\s+/);
+    const lines = [];
+    let current = "";
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > maxChars && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    });
+    if (current) lines.push(current);
+    return lines.length ? lines : ["-"];
+  };
   const statusColor = (status) => {
     if (status === "Aman") return "#059669";
     if (status === "Terlambat") return "#b45309";
@@ -1168,7 +1317,12 @@ function downloadReport(type) {
     return "#dc2626";
   };
   const drawTable = ({ title: tableTitle, x, y, width, columns, rows, rowHeight = 34 }) => {
-    const tableHeight = 82 + 38 + rows.length * rowHeight + 18;
+    const rowHeights = rows.map((row) => {
+      const statusColumn = columns.find((column) => column.key === "status");
+      if (!statusColumn) return rowHeight;
+      return Math.max(rowHeight, 18 + wrapText(row.status, statusColumn.wrap || 18).length * 15);
+    });
+    const tableHeight = 82 + 38 + rowHeights.reduce((sum, height) => sum + height, 0) + 18;
     drawCard(x, y, width, tableHeight, 24);
     drawSectionHeader(x, y, width, tableTitle);
     const top = y + 76;
@@ -1178,16 +1332,24 @@ function downloadReport(type) {
     ctx.fillStyle = "#334155";
     ctx.font = "800 12px Inter, Arial, sans-serif";
     columns.forEach((column) => ctx.fillText(column.label, x + 22 + column.left, top + 25));
+    let rowY = top + 38;
     rows.forEach((row, index) => {
-      const rowY = top + 38 + index * rowHeight;
+      const currentRowHeight = rowHeights[index];
       ctx.fillStyle = index % 2 ? "#fcfdff" : "#ffffff";
-      ctx.fillRect(x + 14, rowY, width - 28, rowHeight);
+      ctx.fillRect(x + 14, rowY, width - 28, currentRowHeight);
       ctx.fillStyle = "#111827";
       ctx.font = "600 12px Inter, Arial, sans-serif";
       columns.forEach((column) => {
         ctx.fillStyle = column.key === "status" ? statusColor(row[column.key]) : "#111827";
-        ctx.fillText(truncate(row[column.key], column.max), x + 22 + column.left, rowY + 24);
+        if (column.key === "status") {
+          wrapText(row[column.key], column.wrap || 18).slice(0, 3).forEach((line, lineIndex) => {
+            ctx.fillText(line, x + 22 + column.left, rowY + 22 + lineIndex * 15);
+          });
+        } else {
+          ctx.fillText(truncate(row[column.key], column.max), x + 22 + column.left, rowY + 24);
+        }
       });
+      rowY += currentRowHeight;
     });
     return tableHeight;
   };
@@ -1211,7 +1373,7 @@ function downloadReport(type) {
       ["Gaji pokok", base],
       ["Konsumsi", meal],
       ["Bonus target", targetBonus],
-      ["Bonus harian", bonus],
+      ["Bonus prorata", bonus],
       [manualPayrollAddition.note || "Insentif Stock Manager", manualPayrollAddition.amount],
     ].filter(([, amount]) => amount);
     const subtotal = items.reduce((sum, [, amount]) => sum + amount, 0);
@@ -1227,7 +1389,8 @@ function downloadReport(type) {
       paidDays: workday + overtime,
     };
   });
-  const attendanceHeightEstimate = 72 + 38 + attendanceRows.length * 34 + 18;
+  const estimateStatusHeight = (status) => Math.max(34, 18 + wrapText(status, 18).length * 15);
+  const attendanceHeightEstimate = 82 + 38 + attendanceRows.reduce((sum, row) => sum + estimateStatusHeight(row.status), 0) + 18;
   const summaryHeight = 118;
   const receiptHeightEstimate = 74 + receiptRows.reduce((height, row) => height + (row.items.length + 3) * 32 + 18, 0) + 84;
   const canvasHeight = 250 + attendanceHeightEstimate + 24 + summaryHeight + 34 + receiptHeightEstimate + 60;
@@ -1272,7 +1435,7 @@ function downloadReport(type) {
       { key: "in", label: "MASUK", left: 230, max: 8 },
       { key: "out", label: "PULANG", left: 326, max: 8 },
       { key: "shift", label: "SHIFT", left: 432, max: 18 },
-      { key: "status", label: "STATUS", left: 560, max: 32 },
+      { key: "status", label: "STATUS", left: 560, max: 32, wrap: 18 },
     ],
     rows: isSalary ? attendanceRows : attendanceRows,
   });
@@ -1315,16 +1478,14 @@ function downloadReport(type) {
       currentY += 32;
     });
 
-    ctx.strokeStyle = "#e2e8f0";
-    ctx.beginPath();
-    ctx.moveTo(70, currentY - 12);
-    ctx.lineTo(704, currentY - 12);
-    ctx.stroke();
-    ctx.fillStyle = "#111827";
-    ctx.font = "800 17px Inter, Arial, sans-serif";
-    ctx.fillText("Subtotal", 70, currentY + 12);
-    ctx.fillText(currency.format(row.subtotal), 540, currentY + 12);
-    currentY += 38;
+    roundRect(56, currentY - 8, 640, 54, 10);
+    ctx.fillStyle = makePurpleGradient(56, currentY - 8, 640, 54);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 19px Inter, Arial, sans-serif";
+    ctx.fillText("Subtotal", 78, currentY + 26);
+    ctx.fillText(currency.format(row.subtotal), 540, currentY + 26);
+    currentY += 72;
 
     if (row.debt) {
       ctx.fillStyle = "#334155";
@@ -1337,13 +1498,10 @@ function downloadReport(type) {
     }
   });
 
-  roundRect(56, currentY, 640, 58, 10);
-  ctx.fillStyle = makePurpleGradient(56, currentY, 640, 58);
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#111827";
   ctx.font = "800 20px Inter, Arial, sans-serif";
-  ctx.fillText("Total Payroll", 78, currentY + 37);
-  ctx.fillText(currency.format(totals.salary), 540, currentY + 37);
+  ctx.fillText("Total Payroll", 70, currentY + 18);
+  ctx.fillText(currency.format(totals.salary), 540, currentY + 18);
 
   const link = document.createElement("a");
   link.download = `${type}-${selectedMonth.toLowerCase().replaceAll(" ", "-")}.${extension}`;
@@ -1352,15 +1510,49 @@ function downloadReport(type) {
   showToast(`${title} berhasil dibuat sebagai ${extension.toUpperCase()}.`);
 }
 
+function exportCorrectedReviewXls() {
+  if (!window.XLSX) {
+    showToast("Library Excel belum termuat. Refresh halaman lalu coba lagi.");
+    return;
+  }
+
+  if (!activeReviewData.length) {
+    showToast("Belum ada data review untuk diexport.");
+    return;
+  }
+
+  const rows = activeReviewData.map((row) => ({
+    Nama: row.name,
+    Tanggal: row.date,
+    "Jam Scan Terdeteksi": row.scan,
+    Masuk: row.in,
+    Pulang: row.out,
+    Shift: row.shift,
+    "Hari Kerja": row.workday,
+    Lembur: row.overtime,
+    Status: row.status,
+  }));
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Hasil Koreksi");
+  XLSX.writeFile(workbook, "hasil-koreksi-kehadiran.xlsx");
+  showToast("XLS hasil koreksi berhasil dibuat.");
+}
+
 function initActions() {
   document.addEventListener("click", (event) => {
     const reviewButton = event.target.closest("[data-review-action]");
     const cancelManualButton = event.target.closest("[data-manual-cancel]");
     const attendanceEditButton = event.target.closest("[data-attendance-edit]");
     const attendanceCancelButton = event.target.closest("[data-export-cancel]");
+    const reviewRowEditButton = event.target.closest("[data-review-row-edit]");
+    const reviewRowDeleteButton = event.target.closest("[data-review-row-delete]");
+    const reviewRowCancelButton = event.target.closest("[data-review-table-cancel]");
+    const manualScanCancelButton = event.target.closest("[data-manual-scan-cancel]");
     const staffButton = event.target.closest("[data-staff-action]");
     const actionButton = event.target.closest("[data-action]");
     const exportButton = event.target.closest("[data-export]");
+    const correctedXlsButton = event.target.closest("[data-export-fixed-xls]");
 
     if (reviewButton) {
       handleReviewAction(reviewButton.dataset.reviewAction, reviewButton.dataset.rowId);
@@ -1381,8 +1573,35 @@ function initActions() {
       renderExport();
     }
 
+    if (reviewRowEditButton) {
+      editingReviewRowId = reviewRowEditButton.dataset.reviewRowEdit;
+      renderReview();
+      showToast("Form edit baris kehadiran dibuka.");
+    }
+
+    if (reviewRowDeleteButton) {
+      deleteReviewRow(reviewRowDeleteButton.dataset.reviewRowDelete);
+    }
+
+    if (reviewRowCancelButton) {
+      editingReviewRowId = null;
+      renderReview();
+    }
+
+    if (manualScanCancelButton) {
+      isAddingManualScan = false;
+      renderReview();
+    }
+
     if (staffButton) {
       handleStaffAction(staffButton.dataset.staffAction, staffButton.dataset.staff, staffButton);
+    }
+
+    if (actionButton?.dataset.action === "add-manual-scan") {
+      isAddingManualScan = true;
+      editingReviewRowId = null;
+      renderReview();
+      showToast("Isi scan manual berdasarkan laporan staff, lalu klik Simpan Scan.");
     }
 
     if (actionButton?.dataset.action === "add-staff") {
@@ -1395,6 +1614,10 @@ function initActions() {
 
     if (exportButton) {
       downloadReport(exportButton.dataset.export);
+    }
+
+    if (correctedXlsButton) {
+      exportCorrectedReviewXls();
     }
   });
 
@@ -1426,24 +1649,36 @@ function initActions() {
   document.addEventListener("submit", (event) => {
     const form = event.target.closest("[data-manual-form]");
     const exportForm = event.target.closest("[data-export-form]");
-    if (!form && !exportForm) return;
+    const reviewForm = event.target.closest("[data-review-form]");
+    const manualScanForm = event.target.closest("[data-manual-scan-form]");
+    if (!form && !exportForm && !reviewForm && !manualScanForm) return;
 
     event.preventDefault();
     if (form) {
       saveManualEdit(form.dataset.manualForm, new FormData(form));
-    } else {
+    } else if (exportForm) {
       saveAttendanceEdit(exportForm.dataset.exportForm, new FormData(exportForm));
+    } else if (reviewForm) {
+      saveReviewRowEdit(reviewForm.dataset.reviewForm, new FormData(reviewForm));
+    } else {
+      saveManualScan(new FormData(manualScanForm));
     }
   });
 
   document.addEventListener("change", (event) => {
-    const form = event.target.closest("[data-manual-form], [data-export-form]");
+    const form = event.target.closest("[data-manual-form], [data-export-form], [data-review-form], [data-manual-scan-form]");
     if (!form) return;
 
+    if (event.target.matches('input[name="in"], input[name="out"]')) {
+      event.target.value = normalizeTimeInput(event.target.value);
+    }
     updateManualAutoResult(form);
-    toggleScanInput(form, "in");
-    toggleScanInput(form, "out");
   });
+
+  document.addEventListener("blur", (event) => {
+    if (!event.target.matches('input[name="in"], input[name="out"]')) return;
+    event.target.value = normalizeTimeInput(event.target.value);
+  }, true);
 
   document.getElementById("applyTargetBonus")?.addEventListener("click", () => {
     targetBonusConfig = {
@@ -1455,6 +1690,45 @@ function initActions() {
     renderBonusPreview();
     renderExport();
     showToast("Bonus capai target ditambahkan ke Rekap Gaji.");
+  });
+
+  document.getElementById("addTargetBonusStaff")?.addEventListener("click", () => {
+    const nameInput = document.getElementById("targetBonusName");
+    const workdayInput = document.getElementById("targetBonusWorkday");
+    const name = String(nameInput?.value || "").trim();
+    const workday = Number(String(workdayInput?.value || "").replace(/[^\d]/g, "")) || 0;
+
+    if (!name || !workday) {
+      showToast("Isi nama staff dan total hari kerja untuk peserta bonus.");
+      return;
+    }
+
+    excludedTargetBonusNames.delete(name);
+    const existing = manualTargetBonusParticipants.find((item) => item.name === name);
+    if (existing) {
+      existing.workday = workday;
+    } else {
+      manualTargetBonusParticipants.push({ name, workday });
+    }
+    if (nameInput) nameInput.value = "";
+    if (workdayInput) workdayInput.value = "";
+    activeSalaryData = buildSalaryFromReview(activeReviewData);
+    renderBonusPreview();
+    renderExport();
+    showToast(`${name} ditambahkan sebagai peserta bonus target.`);
+  });
+
+  document.addEventListener("click", (event) => {
+    const removeBonusButton = event.target.closest("[data-target-bonus-remove]");
+    if (!removeBonusButton) return;
+
+    const name = removeBonusButton.dataset.targetBonusRemove;
+    excludedTargetBonusNames.add(name);
+    manualTargetBonusParticipants = manualTargetBonusParticipants.filter((item) => item.name !== name);
+    activeSalaryData = buildSalaryFromReview(activeReviewData);
+    renderBonusPreview();
+    renderExport();
+    showToast(`${name} tidak diikutkan dalam pembagian bonus target.`);
   });
 
   document.addEventListener("blur", (event) => {
@@ -1473,13 +1747,21 @@ function renderBonusPreview() {
   const container = document.getElementById("bonusPreview");
   if (!container) return;
 
-  if (!activeSalaryData.length) {
-    container.textContent = "Upload data dan klik Terapkan Bonus untuk melihat pembagian.";
+  const participants = activeSalaryData.filter(([name]) => !excludedTargetBonusNames.has(name));
+
+  if (!participants.length) {
+    container.textContent = "Belum ada peserta bonus. Upload data atau tambah peserta manual.";
     return;
   }
 
-  container.innerHTML = activeSalaryData
-    .map(([name, , , , , targetBonus]) => `<span>${name}: <strong>${currency.format(targetBonus)}</strong></span>`)
+  container.innerHTML = participants
+    .map(([name, workday, , , , targetBonus]) => `
+      <span class="bonus-chip">
+        <span>${name}: <strong>${currency.format(targetBonus)}</strong></span>
+        <small>${workday} hari</small>
+        <button class="chip-remove" data-target-bonus-remove="${name}" type="button" aria-label="Keluarkan ${name} dari bonus target">×</button>
+      </span>
+    `)
     .join("");
 }
 
@@ -1590,6 +1872,21 @@ function handleReviewAction(action, rowId) {
   }
 }
 
+function deleteReviewRow(rowId) {
+  const row = activeReviewData.find((item) => item.id === rowId);
+  if (!row) return;
+
+  const confirmed = window.confirm(`Hapus data kehadiran ${row.name} tanggal ${row.date}?`);
+  if (!confirmed) return;
+
+  activeReviewData = activeReviewData.filter((item) => item.id !== rowId);
+  activeAttentionItems = activeAttentionItems.filter((item) => item.rowId !== rowId);
+  if (editingReviewRowId === rowId) editingReviewRowId = null;
+  if (editingExportRowId === rowId) editingExportRowId = null;
+  refreshDerivedViews();
+  showToast(`Baris kehadiran ${row.name} tanggal ${row.date} dihapus.`);
+}
+
 function acceptSuggestion(rowId) {
   const row = activeReviewData.find((item) => item.id === rowId);
   if (!row) return;
@@ -1650,19 +1947,140 @@ function saveAttendanceEdit(rowId, formData) {
   showToast(`Baris laporan ${row.name} tanggal ${row.date} diperbarui.`);
 }
 
+function saveReviewRowEdit(rowId, formData) {
+  const row = activeReviewData.find((item) => item.id === rowId);
+  if (!row) return;
+
+  applyAttendanceCorrection(row, formData);
+  editingReviewRowId = null;
+  removeAttentionItem(rowId);
+  refreshDerivedViews();
+  showToast(`Baris review ${row.name} tanggal ${row.date} diperbarui.`);
+}
+
+function saveManualScan(formData) {
+  const name = String(formData.get("name") || "").trim();
+  const date = String(formData.get("date") || "").trim();
+  const inTime = formData.get("inMode") === "none" ? "-" : normalizeTimeInput(formData.get("in")) || "-";
+  const outTime = formData.get("outMode") === "none" ? "-" : normalizeTimeInput(formData.get("out")) || "-";
+  const selectedShift = formData.get("shift");
+
+  if (!name || !date) {
+    showToast("Nama dan tanggal wajib diisi.");
+    return;
+  }
+
+  let row = activeReviewData.find((item) => item.name === name && item.date === date);
+  if (!row) {
+    row = {
+      id: `manual-${Date.now()}`,
+      name,
+      date,
+      scan: "",
+      in: "-",
+      out: "-",
+      shift: selectedShift === "Otomatis" ? "Shift terdeteksi" : selectedShift,
+      workday: 0,
+      overtime: 0,
+      status: "Perlu Review",
+      issue: "",
+      recommendation: "",
+      suggestion: null,
+    };
+    activeReviewData.push(row);
+  }
+
+  row.in = inTime || "-";
+  row.out = outTime || "-";
+  if (selectedShift !== "Otomatis") row.shift = selectedShift;
+  if (selectedShift === "Otomatis") row.shift = inferShiftFromTimes([row.in, row.out].filter((item) => item && item !== "-"), row.date);
+  row.scan = mergeScanTimes(row.scan, [row.in, row.out]);
+
+  const calculated = row.in === "-" && row.out === "-"
+    ? {
+        workday: 1,
+        overtime: row.shift === "Shift 1 + Shift 2" ? 1 : 0,
+        status: "Terlambat, Tidak Scan Masuk",
+      }
+    : calculateWorkResult(row.shift, row.in, row.out, row.date);
+  row.workday = calculated.workday;
+  row.overtime = calculated.overtime;
+  row.status = calculated.status;
+  row.issue = "";
+  row.recommendation = "";
+  row.suggestion = null;
+
+  isAddingManualScan = false;
+  removeAttentionItem(row.id);
+  sortReviewData();
+  refreshDerivedViews();
+  showToast(`Scan manual untuk ${name} tanggal ${date} disimpan.`);
+}
+
 function applyAttendanceCorrection(row, formData) {
   row.in = formData.get("inMode") === "none" ? "-" : formData.get("in") || "-";
   row.out = formData.get("outMode") === "none" ? "-" : formData.get("out") || "-";
   row.shift = formData.get("shift") || "Shift terdeteksi";
+  row.scan = mergeScanTimes(row.scan, [row.in, row.out]);
   const calculated = calculateWorkResult(row.shift, row.in, row.out, row.date);
   row.workday = calculated.workday;
   row.overtime = calculated.overtime;
   row.status = calculated.status;
 }
 
+function mergeScanTimes(currentScan, nextTimes) {
+  const times = [
+    ...String(currentScan || "").split(",").map((item) => item.trim()),
+    ...nextTimes,
+  ]
+    .map((item) => normalizeTimeInput(item))
+    .filter(Boolean);
+  return [...new Set(times)]
+    .sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b))
+    .join(", ");
+}
+
+function normalizeTimeInput(value) {
+  const text = String(value || "").trim();
+  if (!text || text === "-") return "";
+  const compactMatch = text.match(/^(\d{1,2})(\d{2})$/);
+  if (compactMatch) return `${String(Number(compactMatch[1])).padStart(2, "0")}:${compactMatch[2]}`;
+  const match = text.match(/^(\d{1,2})[:.](\d{2})$/);
+  if (!match) return text;
+  return `${String(Number(match[1])).padStart(2, "0")}:${match[2]}`;
+}
+
+function sortReviewData() {
+  activeReviewData.sort((a, b) => {
+    const dateDiff = parseDateSortValue(a.date) - parseDateSortValue(b.date);
+    if (dateDiff) return dateDiff;
+    const nameDiff = String(a.name).localeCompare(String(b.name), "id");
+    if (nameDiff) return nameDiff;
+    return parseTimeToMinutes(a.in) - parseTimeToMinutes(b.in);
+  });
+}
+
+function parseDateSortValue(value) {
+  const text = String(value || "").trim();
+  const slashMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slashMatch) {
+    const day = Number(slashMatch[1]);
+    const month = Number(slashMatch[2]) - 1;
+    const year = Number(slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]);
+    return new Date(year, month, day).getTime();
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
+}
+
 function calculateWorkResult(shift, inTime, outTime, date = "") {
   const hasIn = inTime && inTime !== "-";
   const hasOut = outTime && outTime !== "-";
+
+  if (shift === "Shift 1 + Shift 2" && !hasIn) {
+    return { workday: 1, overtime: 1, status: "Terlambat, Tidak Scan Masuk" };
+  }
 
   if (!hasIn && !hasOut) {
     return { workday: 0, overtime: 0, status: "Tidak Absen" };
@@ -1684,12 +2102,8 @@ function calculateWorkResult(shift, inTime, outTime, date = "") {
 }
 
 function updateManualAutoResult(form) {
-  const formData = new FormData(form);
-  const inTime = formData.get("inMode") === "none" ? "-" : formData.get("in") || "-";
-  const outTime = formData.get("outMode") === "none" ? "-" : formData.get("out") || "-";
-  const result = calculateWorkResult(formData.get("shift"), inTime, outTime, row.date);
-  form.querySelector("[data-auto-workday]").textContent = result.workday;
-  form.querySelector("[data-auto-overtime]").textContent = result.overtime;
+  toggleScanInput(form, "in");
+  toggleScanInput(form, "out");
 }
 
 function toggleScanInput(form, type) {
