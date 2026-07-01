@@ -39,7 +39,7 @@ button {
 }
 
 .app-shell {
-  width: min(1200px, calc(100% - 32px));
+  width: min(1680px, calc(100% - 24px));
   margin: 0 auto;
   padding: 24px 0 40px;
 }
@@ -421,7 +421,7 @@ tbody tr:last-child td {
 }
 
 .attendance-edit-row .manual-edit-form {
-  max-width: 760px;
+  min-width: 620px;
 }
 
 .manual-payroll-addition {
@@ -537,7 +537,7 @@ tbody tr:last-child td {
 }
 
 .review-layout {
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 0.8fr);
+  grid-template-columns: minmax(0, 2.4fr) minmax(320px, 0.8fr);
 }
 
 .attention-list {
@@ -594,25 +594,47 @@ tbody tr:last-child td {
 
 .manual-edit-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
   gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.manual-edit-form label {
+.manual-edit-form.is-inline-edit {
+  grid-template-columns: repeat(3, minmax(132px, 1fr)) minmax(150px, 0.7fr);
+  overflow-x: auto;
+}
+
+.manual-edit-form.is-attention-edit {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  overflow: visible;
+}
+
+.manual-scan-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(130px, 0.8fr) repeat(2, minmax(160px, 1fr)) minmax(150px, 0.9fr) minmax(170px, 0.8fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.manual-edit-form label,
+.manual-scan-form label {
   font-size: 12px;
 }
 
 .manual-edit-form input,
-.manual-edit-form select {
+.manual-edit-form select,
+.manual-scan-form input,
+.manual-scan-form select {
   width: 100%;
   min-width: 0;
   min-height: 38px;
 }
 
-.manual-edit-form label {
+.manual-edit-form label,
+.manual-scan-form label {
   gap: 6px;
 }
 
@@ -641,10 +663,14 @@ tbody tr:last-child td {
 }
 
 .manual-edit-actions {
-  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-self: end;
+}
+
+.manual-edit-form.is-attention-edit .manual-edit-actions {
+  align-self: stretch;
 }
 
 .mini-btn {
@@ -734,12 +760,55 @@ tbody tr:last-child td {
   margin-top: 12px;
 }
 
-.bonus-preview span {
+.bonus-preview .bonus-chip {
+  display: inline-grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
   padding: 9px 11px;
-  border-radius: 999px;
+  border-radius: 14px;
   background: #f1f5f9;
   color: #314154;
   font-size: 13px;
+}
+
+.bonus-chip small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.chip-remove {
+  grid-row: span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #fecdd3;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: var(--primary-dark);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.chip-remove:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+}
+
+.bonus-manual-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.4fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.bonus-manual-form input {
+  width: 100%;
+  min-height: 38px;
 }
 
 .staff-edit-row input {
@@ -860,7 +929,7 @@ select {
 
 @media (max-width: 680px) {
   .app-shell {
-    width: min(100% - 20px, 1200px);
+    width: calc(100% - 20px);
     padding-top: 10px;
   }
 
