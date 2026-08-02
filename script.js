@@ -785,7 +785,7 @@ function buildSalaryFromReview(rows) {
     const monthlyBase = value.bonusOnly ? 0 : staff?.[1] || 0;
     const paidDays = value.workday + value.overtime;
     const base = calculateProratedBase(monthlyBase, paidDays);
-    const mealPerDay = value.bonusOnly ? 0 : staff?.[2] || 15000;
+    const mealPerDay = value.bonusOnly ? 0 : (staff?.[2] ?? 15000);
     const monthlyBonus = staff?.[3] || 0;
     const extra = value.bonusOnly ? 0 : calculateProratedBonus(monthlyBonus, paidDays, value.late);
     const debt = value.bonusOnly ? 0 : staff?.[4] || 0;
