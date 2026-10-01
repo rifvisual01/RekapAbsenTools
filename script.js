@@ -389,7 +389,8 @@ function renderExport() {
   document.getElementById("salaryRows").innerHTML = filteredSalary.length
     ? filteredSalary
     .map(([name, workday, overtime, base, meal, targetBonus, bonus, debt]) => {
-      const total = calculateSalaryTotal({ base, meal, targetBonus, bonus, debt, workday, overtime });
+      const totalBeforeDebt = calculateGrossSalaryTotal({ base, meal, targetBonus, bonus });
+      const totalAfterDebt = calculateSalaryTotal({ base, meal, targetBonus, bonus, debt, workday, overtime });
       return `
         <tr>
           <td>${name}</td>
@@ -400,12 +401,13 @@ function renderExport() {
           <td>${currency.format(targetBonus)}</td>
           <td>${currency.format(bonus)}</td>
           <td>${currency.format(debt)}</td>
-          <td><strong>${currency.format(total)}</strong></td>
+          <td>${currency.format(totalBeforeDebt)}</td>
+          <td><strong>${currency.format(totalAfterDebt)}</strong></td>
         </tr>
       `;
     })
     .join("")
-    : `<tr><td colspan="9">Belum ada rekap gaji.</td></tr>`;
+    : `<tr><td colspan="10">Belum ada rekap gaji.</td></tr>`;
 
   const totals = filteredSalary.reduce(
     (summary, [, workday, overtime, base, meal, targetBonus, bonus, debt]) => {
@@ -806,7 +808,11 @@ function isPayrollWorkday(row) {
 }
 
 function calculateSalaryTotal(values) {
-  return (values.base || 0) + (values.meal || 0) + (values.targetBonus || 0) + (values.bonus || 0) - (values.debt || 0);
+  return calculateGrossSalaryTotal(values) - (values.debt || 0);
+}
+
+function calculateGrossSalaryTotal(values) {
+  return (values.base || 0) + (values.meal || 0) + (values.targetBonus || 0) + (values.bonus || 0);
 }
 
 function calculateProratedBase(monthlyBase, workday) {
@@ -1460,7 +1466,7 @@ function downloadReport(type) {
   const summaryY = 220 + attendanceHeight + 22;
   drawCard(34, summaryY, 700, summaryHeight, 24);
   [
-    ["Hari kerja", attendanceSummary.workday, "#ecfdf5", "#059669"],
+    ["Total hari kerja", attendanceSummary.workday + attendanceSummary.overtime, "#ecfdf5", "#059669"],
     ["Lembur", attendanceSummary.overtime, "#eff6ff", "#2563eb"],
     ["Libur", attendanceSummary.offday, "#fefce8", "#ca8a04"],
     ["Terlambat", attendanceSummary.late, "#fff1f2", "#e11d48"],
