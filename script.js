@@ -480,7 +480,7 @@ function renderExport() {
 
   document.getElementById("salaryRows").innerHTML = filteredSalary.length
     ? filteredSalary
-    .map(([name, workday, overtime, base, meal, targetBonus, bonus, debt, offday]) => {
+    .map(([name, workday, overtime, base, meal, targetBonus, bonus, debt, offday, late]) => {
       const totalBeforeDebt = calculateGrossSalaryTotal({ base, meal, targetBonus, bonus });
       const totalAfterDebt = calculateSalaryTotal({ base, meal, targetBonus, bonus, debt, workday, overtime });
       return `
@@ -492,7 +492,7 @@ function renderExport() {
           <td>${currency.format(base)}</td>
           <td>${currency.format(meal)}</td>
           <td>${currency.format(targetBonus)}</td>
-          <td>${currency.format(bonus)}</td>
+          <td>${currency.format(bonus)}<small class="bonus-details">(${getProratedBonusNote(late)})</small></td>
           <td>${currency.format(debt)}</td>
           <td>${currency.format(totalBeforeDebt)}</td>
           <td><strong>${currency.format(totalAfterDebt)}</strong></td>
@@ -939,6 +939,13 @@ function getLateBonusMultiplier(lateCount) {
   if (count <= 9) return 0.8;
   if (count <= 12) return 0.6;
   return 0.4;
+}
+
+function getProratedBonusNote(lateCount) {
+  const count = Math.max(0, Number(lateCount) || 0);
+  const percentage = Math.round(getLateBonusMultiplier(count) * 100);
+  const description = count < 5 ? "terlambat di bawah 5x" : `terlambat ${count}x`;
+  return `${percentage}% - ${description}`;
 }
 
 function renderManualPayrollPreview() {
@@ -1558,12 +1565,12 @@ async function createReportCanvas(type) {
     offday: filteredSalary.reduce((sum, row) => sum + row[8], 0),
     late: filteredSalary.reduce((sum, row) => sum + row[9], 0),
   };
-  const receiptRows = filteredSalary.map(([name, workday, overtime, base, meal, targetBonus, bonus, debt, offday], index) => {
+  const receiptRows = filteredSalary.map(([name, workday, overtime, base, meal, targetBonus, bonus, debt, offday, late], index) => {
     const items = [
       ["Gaji pokok", base],
       ["Konsumsi", meal],
       ["Bonus target", targetBonus],
-      ["Bonus prorata", bonus],
+      [`Bonus prorata (${getProratedBonusNote(late)})`, bonus],
       [manualPayrollAddition.note || "Tambahan manual", index === 0 ? manualPayrollAddition.amount : 0],
     ].filter(([, amount]) => amount);
     const subtotal = items.reduce((sum, [, amount]) => sum + amount, 0);
@@ -1583,7 +1590,7 @@ async function createReportCanvas(type) {
   const estimateStatusHeight = (status) => Math.max(34, 18 + wrapText(status, 18).length * 15);
   const attendanceHeightEstimate = 82 + 38 + attendanceRows.reduce((sum, row) => sum + estimateStatusHeight(row.status), 0) + 18;
   const summaryHeight = 118;
-  const receiptHeightEstimate = 74 + receiptRows.reduce((height, row) => height + (row.items.length + 3) * 32 + 68, 0) + 84;
+  const receiptHeightEstimate = 86 + receiptRows.reduce((height, row) => height + (row.items.length + 3) * 32 + 18, 0) + 84;
   const canvasHeight = 250 + attendanceHeightEstimate + 24 + summaryHeight + 34 + receiptHeightEstimate + 60;
 
   const exportScale = 4;
@@ -1641,7 +1648,7 @@ async function createReportCanvas(type) {
   const summaryY = 220 + attendanceHeight + 22;
   drawCard(34, summaryY, 700, summaryHeight, 24);
   [
-    ["Hari hadir", attendanceSummary.workday, "#ecfdf5", "#059669"],
+    ["Total hari hadir", attendanceSummary.workday + attendanceSummary.overtime, "#ecfdf5", "#059669"],
     ["Lembur", attendanceSummary.overtime, "#eff6ff", "#2563eb"],
     ["Libur", attendanceSummary.offday, "#fefce8", "#ca8a04"],
     ["Terlambat", attendanceSummary.late, "#fff1f2", "#e11d48"],
@@ -1664,20 +1671,12 @@ async function createReportCanvas(type) {
   drawCard(34, receiptY, 700, receiptHeightEstimate, 24);
   drawSectionHeader(34, receiptY, 700, "Rekap Gaji");
 
-  let currentY = receiptY + 78;
+  let currentY = receiptY + 90;
   receiptRows.forEach((row) => {
-    ctx.fillStyle = theme.dark;
-    ctx.font = "800 16px Inter, Arial, sans-serif";
-    ctx.fillText(row.name, 70, currentY, 600);
-    currentY += 22;
-    ctx.fillStyle = "#64748b";
-    ctx.font = "500 12px Inter, Arial, sans-serif";
-    ctx.fillText(`${row.workday} hadir  ·  ${row.offday} libur  ·  ${row.overtime} lembur`, 70, currentY);
-    currentY += 28;
     row.items.forEach(([label, amount]) => {
       ctx.fillStyle = "#334155";
       ctx.font = "600 15px Inter, Arial, sans-serif";
-      ctx.fillText(label, 70, currentY);
+      ctx.fillText(label, 70, currentY, 440);
       ctx.fillStyle = amount < 0 ? "#dc2626" : "#111827";
       ctx.font = "700 15px Inter, Arial, sans-serif";
       ctx.fillText(currency.format(amount), 540, currentY);
