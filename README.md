@@ -72,3 +72,13 @@ Sari,03/04/2026 16:00,C/Keluar,-
 ## Catatan Data Contoh
 
 Data contoh tidak lagi ditampilkan sebagai data kerja aktif. Nama staff akan diambil dari file upload. Jika belum ada file, tabel akan menampilkan state kosong.
+
+## Tema, Preview, dan Koreksi Rekap
+
+- Pilih **Pizzain (merah)** atau **Fresin (biru)** di area pilih file pada langkah Upload. Logo dan warna mengikuti pilihan ini pada aplikasi dan gambar laporan. Pilihan tema disimpan di browser.
+- Pada langkah Export, **Preview Laporan** di sebelah tombol Export membuka gambar hasil laporan tanpa mengunduh. Preview dan export menggunakan renderer yang sama.
+- Kolom **Libur** mengikuti jumlah hari kalender pada bulan data, dikurangi hari hadir. Filter bulan mengikuti periode di file dan membatasi absensi serta perhitungan gaji.
+- Klik ikon pulpen di ujung card **Preview Rekap Gaji** untuk mengoreksi hadir, libur, lembur, dan terlambat. Hadir dan libur saling menyesuaikan; lembur dan terlambat tidak boleh melebihi hari hadir.
+- **Simpan & Hitung Ulang** memperbarui gaji pokok, konsumsi, bonus prorata, dan pembagian bonus target seluruh peserta. Rumus tetap memakai hadir + lembur, pembagi gaji bulanan 30, serta aturan pengurang bonus karena terlambat yang sudah ada.
+- Koreksi rekap dipisahkan per staff dan bulan selama sesi aplikasi, dan tidak mengganti jam scan. **Gunakan Data Absensi** menghapus koreksi untuk staff yang sedang ditampilkan. Upload file baru atau Reset File menghapus koreksi rekap; memuat ulang halaman menghapus data sesi.
+- Jalankan `npm test` untuk pengujian perhitungan payroll.

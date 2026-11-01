@@ -15,13 +15,16 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Tools Internal F&B</p>
-          <h1>Smart Attendance Converter</h1>
+        <div class="topbar__brand">
+          <img id="brandLogo" class="brand-logo" src="assets/pizzain.jpg" alt="Pizzain" />
+          <div>
+            <p class="eyebrow">Tools Internal F&B</p>
+            <h1>Smart Attendance Converter</h1>
+          </div>
         </div>
         <div class="topbar__status">
           <span class="status-dot"></span>
-          Prototype siap dipakai
+          <span id="brandName">Pizzain</span> · Attendance & Payroll
         </div>
       </header>
 
@@ -82,6 +85,19 @@
           </div>
 
           <div class="upload-section">
+            <fieldset class="theme-picker">
+              <legend>Tema aplikasi & laporan</legend>
+              <label class="theme-option">
+                <input type="radio" name="reportTheme" value="red" checked />
+                <img src="assets/pizzain.jpg" alt="" />
+                <span><strong>Pizzain</strong><small>Tema merah</small></span>
+              </label>
+              <label class="theme-option">
+                <input type="radio" name="reportTheme" value="blue" />
+                <img src="assets/fresin.png" alt="" />
+                <span><strong>Fresin</strong><small>Tema biru</small></span>
+              </label>
+            </fieldset>
             <div class="upload-box" id="dropzone">
               <div class="upload-icon" aria-hidden="true">↑</div>
               <h3>Tarik file Excel ke sini</h3>
@@ -133,7 +149,7 @@
                     </select>
                   </label>
                   <button class="mini-btn is-selected" data-action="add-manual-scan" type="button">Tambah Scan Manual</button>
-                  <span class="pill">April 2026</span>
+                  <span class="pill" id="reviewPeriodLabel">Belum ada data</span>
                 </div>
               </div>
               <div class="table-wrap wide">
@@ -274,10 +290,7 @@
             </label>
             <label>
               Pilih Bulan
-              <select id="monthFilter">
-                <option>April 2026</option>
-                <option>Mei 2026</option>
-              </select>
+              <select id="monthFilter"></select>
             </label>
           </div>
 
@@ -306,10 +319,15 @@
               </div>
             </div>
 
-            <div class="card">
+            <div class="card payroll-card">
               <div class="card-head">
                 <h3>Preview Rekap Gaji</h3>
-                <span class="pill">Payroll</span>
+                <div class="action-group">
+                  <span class="pill">Payroll</span>
+                  <button class="icon-btn" id="editPayroll" type="button" aria-label="Edit rekap gaji" aria-expanded="false" aria-controls="payrollEditor" title="Edit rekap gaji">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m16 3 5 5M4 20l4-1L21 6a2 2 0 0 0-4-4L4 15l-1 6Z"/></svg>
+                  </button>
+                </div>
               </div>
               <div class="table-wrap">
                 <table>
@@ -317,6 +335,7 @@
                     <tr>
                       <th>Nama Staff</th>
                       <th>Hari Kerja</th>
+                      <th>Libur</th>
                       <th>Hari Lembur</th>
                       <th>Gaji Pokok Prorata</th>
                       <th>Konsumsi</th>
@@ -330,6 +349,7 @@
                   <tbody id="salaryRows"></tbody>
                 </table>
               </div>
+              <div id="payrollEditor" hidden></div>
               <div class="manual-payroll-addition">
                 <label>
                   Tambahan Manual
@@ -347,19 +367,20 @@
           <div class="final-preview" id="finalPreview">
             <div>
               <p class="eyebrow">Preview Gambar Final</p>
-              <h3>Laporan Kehadiran & Rekap Gaji - April 2026</h3>
+              <h3>Laporan Kehadiran & Rekap Gaji</h3>
             </div>
             <div class="preview-summary">
-              <span>4 staff</span>
-              <span>87 hari kerja</span>
-              <span>14 lembur</span>
-              <strong>Rp12.320.000</strong>
+              <span>0 staff</span>
+              <span>0 hari kerja</span>
+              <span>0 lembur</span>
+              <strong>Rp 0</strong>
             </div>
           </div>
 
           <div class="actions split">
             <button class="btn btn-ghost" data-next="setting" type="button">Kembali ke Setting</button>
             <div class="action-group">
+              <button class="btn btn-secondary" id="previewReport" type="button">Preview Laporan</button>
               <button class="btn btn-primary" data-export="all-png" type="button">Export Laporan</button>
             </div>
           </div>
@@ -368,6 +389,17 @@
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-label="Notifikasi"></div>
+
+    <dialog id="reportPreviewDialog" class="report-dialog" aria-labelledby="reportPreviewTitle">
+      <div class="report-dialog__head">
+        <div><p class="eyebrow">Tampilan hasil export</p><h3 id="reportPreviewTitle">Preview Laporan</h3></div>
+        <div class="action-group">
+          <button class="btn btn-primary btn-small" data-export="all-png" type="button">Export Laporan</button>
+          <button class="icon-btn" id="closeReportPreview" type="button" aria-label="Tutup preview">×</button>
+        </div>
+      </div>
+      <div class="report-dialog__body"><img id="reportPreviewImage" alt="Preview laporan kehadiran dan rekap gaji" /></div>
+    </dialog>
 
     <script src="xlsx.full.min.js"></script>
     <script src="script.js"></script>

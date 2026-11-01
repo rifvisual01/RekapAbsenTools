@@ -10,13 +10,15 @@ const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".md": "text/markdown; charset=utf-8",
 };
 
 const server = http.createServer((request, response) => {
   const urlPath = decodeURIComponent(request.url.split("?")[0]);
-  const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
-  const filePath = path.join(root, safePath === "/" ? "index.html" : safePath);
+  const safePath = path.normalize(urlPath === "/" ? "index.html" : urlPath).replace(/^(\.\.[/\\])+/, "");
+  const filePath = path.join(root, safePath);
 
   if (!filePath.startsWith(root)) {
     response.writeHead(403);

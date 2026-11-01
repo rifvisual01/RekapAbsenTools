@@ -4,6 +4,13 @@ let activeReviewData = [];
 let activeAttentionItems = [];
 let activeSalaryData = [];
 let activeStaffData = [];
+const payrollOverrides = new Map();
+const reportThemes = {
+  red: { name: "Pizzain", logo: "assets/pizzain.jpg", primary: "#c81635", dark: "#790c23", soft: "#fff0f3", line: "#f0d3da", background: "#f9f2f3" },
+  blue: { name: "Fresin", logo: "assets/fresin.png", primary: "#2455c7", dark: "#08065a", soft: "#edf3ff", line: "#d4dff3", background: "#f0f4fa" },
+};
+let activeTheme = "red";
+let previewObjectUrl = null;
 let activeReviewNameFilter = "Semua Staff";
 let editingStaffName = null;
 let editingReviewRowId = null;
@@ -51,6 +58,7 @@ function createDefaultWorkRules() {
 }
 
 function setStep(nextStep) {
+  if (nextStep !== "export") closePayrollEditor();
   const activeIndex = steps.indexOf(nextStep);
 
   document.querySelectorAll("[data-step]").forEach((panel) => {
@@ -346,9 +354,93 @@ function getSelectedStaff() {
   return selected === "Semua Staff" ? null : selected;
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+
+function getRowPeriod(row) {
+  const date = new Date(parseDateSortValue(row.date));
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getSelectedPeriod() {
+  return document.getElementById("monthFilter").value;
+}
+
+function getPeriodDayCount() {
+  const [year, month] = getSelectedPeriod().split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function getPeriodRows(rows = activeReviewData) {
+  return rows.filter((row) => getRowPeriod(row) === getSelectedPeriod());
+}
+
+function renderMonthFilter() {
+  const filter = document.getElementById("monthFilter");
+  const previous = filter.value;
+  const periods = [...new Set(activeReviewData.map(getRowPeriod).filter(Boolean))].sort();
+  if (!periods.length) {
+    const now = new Date();
+    periods.push(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  }
+  filter.innerHTML = periods.map((period) => {
+    const [year, month] = period.split("-").map(Number);
+    const label = new Date(year, month - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+    return `<option value="${period}">${label}</option>`;
+  }).join("");
+  filter.value = periods.includes(previous) ? previous : periods[periods.length - 1];
+  const periodLabel = document.getElementById("reviewPeriodLabel");
+  if (periodLabel) periodLabel.textContent = activeReviewData.length ? (periods.length === 1 ? getPeriodLabel() : `${periods.length} bulan`) : "Belum ada data";
+}
+
+function getPeriodLabel() {
+  const [year, month] = getSelectedPeriod().split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+}
+
+function getReportDateLabel(rows) {
+  const dates = rows.map((row) => new Date(parseDateSortValue(row.date)))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a - b);
+  if (!dates.length) return getPeriodLabel();
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  const fullDate = (date) => date.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  if (first.getTime() === last.getTime()) return fullDate(first);
+  if (first.getFullYear() === last.getFullYear() && first.getMonth() === last.getMonth()) {
+    return `${String(first.getDate()).padStart(2, "0")}–${fullDate(last)}`;
+  }
+  return `${fullDate(first)} – ${fullDate(last)}`;
+}
+
+function payrollOverrideKey(name) {
+  return `${getSelectedPeriod()}|${name}`;
+}
+
+function setTheme(theme) {
+  activeTheme = reportThemes[theme] ? theme : "red";
+  const config = reportThemes[activeTheme];
+  document.documentElement.dataset.theme = activeTheme;
+  document.getElementById("brandLogo").src = config.logo;
+  document.getElementById("brandLogo").alt = config.name;
+  document.getElementById("brandName").textContent = config.name;
+  document.querySelector(`input[name="reportTheme"][value="${activeTheme}"]`).checked = true;
+  try { localStorage.setItem("attendance-report-theme", activeTheme); } catch {}
+}
+
+function initTheme() {
+  let savedTheme = "red";
+  try { savedTheme = localStorage.getItem("attendance-report-theme") || "red"; } catch {}
+  setTheme(savedTheme);
+  document.querySelectorAll('[name="reportTheme"]').forEach((input) => input.addEventListener("change", () => setTheme(input.value)));
+}
+
 function getFilteredReviewData() {
   const selectedStaff = getSelectedStaff();
-  return selectedStaff ? activeReviewData.filter((row) => row.name === selectedStaff) : activeReviewData;
+  const rows = getPeriodRows();
+  return selectedStaff ? rows.filter((row) => row.name === selectedStaff) : rows;
 }
 
 function getFilteredSalaryData() {
@@ -388,13 +480,14 @@ function renderExport() {
 
   document.getElementById("salaryRows").innerHTML = filteredSalary.length
     ? filteredSalary
-    .map(([name, workday, overtime, base, meal, targetBonus, bonus, debt]) => {
+    .map(([name, workday, overtime, base, meal, targetBonus, bonus, debt, offday]) => {
       const totalBeforeDebt = calculateGrossSalaryTotal({ base, meal, targetBonus, bonus });
       const totalAfterDebt = calculateSalaryTotal({ base, meal, targetBonus, bonus, debt, workday, overtime });
       return `
         <tr>
-          <td>${name}</td>
+          <td>${escapeHtml(name)}${payrollOverrides.has(payrollOverrideKey(name)) ? '<small class="salary-adjusted">Disesuaikan manual</small>' : ""}</td>
           <td>${workday}</td>
+          <td>${offday}</td>
           <td>${overtime}</td>
           <td>${currency.format(base)}</td>
           <td>${currency.format(meal)}</td>
@@ -407,24 +500,27 @@ function renderExport() {
       `;
     })
     .join("")
-    : `<tr><td colspan="10">Belum ada rekap gaji.</td></tr>`;
+    : `<tr><td colspan="11">Belum ada rekap gaji.</td></tr>`;
 
   const totals = filteredSalary.reduce(
-    (summary, [, workday, overtime, base, meal, targetBonus, bonus, debt]) => {
+    (summary, [, workday, overtime, base, meal, targetBonus, bonus, debt, offday]) => {
       summary.staff += 1;
       summary.workday += workday;
       summary.overtime += overtime;
+      summary.offday += offday;
       summary.salary += calculateSalaryTotal({ base, meal, targetBonus, bonus, debt, workday, overtime });
       return summary;
     },
-    { staff: 0, workday: 0, overtime: 0, salary: 0 },
+    { staff: 0, workday: 0, overtime: 0, offday: 0, salary: 0 },
   );
   const finalSalary = totals.salary + manualPayrollAddition.amount;
   renderManualPayrollPreview();
+  document.querySelector("#finalPreview h3").textContent = `Laporan Kehadiran & Rekap Gaji - ${getPeriodLabel()}`;
 
   document.querySelector(".preview-summary").innerHTML = `
     <span>${totals.staff} staff</span>
     <span>${totals.workday} hari kerja</span>
+    <span>${totals.offday} libur</span>
     <span>${totals.overtime} lembur</span>
     <strong>${currency.format(finalSalary)}</strong>
   `;
@@ -494,6 +590,9 @@ function initUpload() {
     ];
     activeSalaryData = [];
     activeStaffData = [];
+    payrollOverrides.clear();
+    closePayrollEditor();
+    renderMonthFilter();
     renderReview();
     renderAttention();
     renderStaff();
@@ -638,6 +737,9 @@ function loadRows(parsedRows, sourceName) {
   activeReviewNameFilter = "Semua Staff";
   activeAttentionItems = buildAttentionFromUpload(activeReviewData);
   activeStaffData = buildStaffFromReview(activeReviewData);
+  payrollOverrides.clear();
+  closePayrollEditor();
+  renderMonthFilter();
   activeSalaryData = buildSalaryFromReview(activeReviewData);
   renderReview();
   renderAttention();
@@ -654,6 +756,8 @@ function rebuildFromUploadedRows() {
   activeReviewNameFilter = "Semua Staff";
   activeAttentionItems = buildAttentionFromUpload(activeReviewData);
   activeStaffData = buildStaffFromReview(activeReviewData);
+  closePayrollEditor();
+  renderMonthFilter();
   activeSalaryData = buildSalaryFromReview(activeReviewData);
   renderReview();
   renderAttention();
@@ -770,7 +874,7 @@ function mergeDateTime(dateValue, timeValue) {
 }
 
 function buildSalaryFromReview(rows) {
-  const summary = rows.reduce((result, row) => {
+  const summary = getPeriodRows(rows).reduce((result, row) => {
     result[row.name] ||= { workday: 0, overtime: 0, late: 0 };
     result[row.name].workday += isPayrollWorkday(row) ? 1 : 0;
     result[row.name].overtime += row.overtime;
@@ -779,6 +883,11 @@ function buildSalaryFromReview(rows) {
   }, {});
   manualTargetBonusParticipants.forEach(({ name, workday }) => {
     if (!summary[name]) summary[name] = { workday, overtime: 0, late: 0, bonusOnly: true };
+  });
+  Object.entries(summary).forEach(([name, value]) => {
+    value.offday = Math.max(0, getPeriodDayCount() - value.workday);
+    const override = payrollOverrides.get(payrollOverrideKey(name));
+    if (override) Object.assign(value, override);
   });
   const targetShares = calculateTargetBonusShares(summary);
 
@@ -792,7 +901,7 @@ function buildSalaryFromReview(rows) {
     const extra = value.bonusOnly ? 0 : calculateProratedBonus(monthlyBonus, paidDays, value.late);
     const debt = value.bonusOnly ? 0 : staff?.[4] || 0;
     const meal = paidDays * mealPerDay;
-    return [name, value.workday, value.overtime, base, meal, targetShares[name] || 0, extra, debt];
+    return [name, value.workday, value.overtime, base, meal, targetShares[name] || 0, extra, debt, value.offday, value.late];
   });
 }
 
@@ -877,11 +986,13 @@ function renderStaffFilter() {
   const filter = document.getElementById("staffFilter");
   if (!filter) return;
 
-  const names = [...new Set(activeReviewData.map((row) => row.name))];
+  const previous = filter.value;
+  const names = [...new Set(activeSalaryData.map(([name]) => name))];
   filter.innerHTML = [
     `<option>Semua Staff</option>`,
-    ...names.map((name) => `<option>${name}</option>`),
+    ...names.map((name) => `<option>${escapeHtml(name)}</option>`),
   ].join("");
+  filter.value = names.includes(previous) ? previous : "Semua Staff";
 }
 
 function renderReviewNameFilter() {
@@ -1235,13 +1346,70 @@ function buildAttentionFromUpload(rows) {
       ];
 }
 
-function downloadReport(type) {
+function closePayrollEditor() {
+  const editor = document.getElementById("payrollEditor");
+  editor.hidden = true;
+  editor.innerHTML = "";
+  document.getElementById("editPayroll").setAttribute("aria-expanded", "false");
+}
+
+function openPayrollEditor() {
+  const rows = getFilteredSalaryData();
+  if (!rows.length) return showToast("Upload data terlebih dahulu untuk mengedit rekap gaji.");
+  const editor = document.getElementById("payrollEditor");
+  editor.hidden = false;
+  editor.className = "payroll-editor";
+  document.getElementById("editPayroll").setAttribute("aria-expanded", "true");
+  editor.innerHTML = `
+    <form id="payrollEditForm">
+      <p class="field-help">${getPeriodLabel()} · ${getPeriodDayCount()} hari kalender. Hadir + libur harus sama dengan hari kalender. Gaji, konsumsi, bonus prorata, dan bobot bonus target memakai hadir + lembur; libur tidak dibayar. Koreksi ini disimpan untuk rekap bulan ini, sedangkan detail scan tetap mengikuti file.</p>
+      <div class="payroll-editor__rows">${rows.map(([name, workday, overtime, , , , , , offday, late], index) => `
+        <div class="payroll-editor__row" data-payroll-name="${escapeHtml(name)}">
+          <strong>${escapeHtml(name)}</strong>
+          ${[["workday", "Hari hadir", workday], ["offday", "Libur", offday], ["overtime", "Lembur", overtime], ["late", "Terlambat", late]].map(([key, label, value]) => `<label>${label}<input type="number" name="${key}-${index}" data-payroll-field="${key}" min="0" max="${getPeriodDayCount()}" step="1" required value="${value}" /></label>`).join("")}
+        </div>`).join("")}</div>
+      <p class="payroll-error" id="payrollError" role="alert"></p>
+      <div class="action-group actions">
+        <button class="btn btn-ghost btn-small" id="resetPayroll" type="button">Gunakan Data Absensi</button>
+        <button class="btn btn-secondary btn-small" id="cancelPayroll" type="button">Batal</button>
+        <button class="btn btn-primary btn-small" type="submit">Simpan & Hitung Ulang</button>
+      </div>
+    </form>`;
+  editor.querySelector("input")?.focus();
+}
+
+function savePayrollEditor(form) {
+  const updates = [];
+  for (const row of form.querySelectorAll("[data-payroll-name]")) {
+    const values = Object.fromEntries([...row.querySelectorAll("[data-payroll-field]")].map((input) => [input.dataset.payrollField, Number(input.value)]));
+    const { workday, offday, overtime, late } = values;
+    if (Object.values(values).some((value) => !Number.isInteger(value) || value < 0) || workday + offday !== getPeriodDayCount() || overtime > workday || late > workday) {
+      document.getElementById("payrollError").textContent = `${row.dataset.payrollName}: hadir + libur harus ${getPeriodDayCount()} hari; lembur dan terlambat tidak boleh melebihi hari hadir.`;
+      return;
+    }
+    updates.push([payrollOverrideKey(row.dataset.payrollName), values]);
+  }
+  updates.forEach(([key, values]) => payrollOverrides.set(key, values));
+  closePayrollEditor();
+  activeSalaryData = buildSalaryFromReview(activeReviewData);
+  renderBonusPreview();
+  renderExport();
+  showToast("Rekap disimpan. Gaji, konsumsi, dan seluruh pembagian bonus sudah dihitung ulang.");
+}
+
+async function createReportCanvas(type) {
   syncManualPayrollAdditionFromForm();
+  await document.fonts.ready;
+  const theme = reportThemes[activeTheme];
+  const logo = new Image();
+  logo.src = theme.logo;
+  await logo.decode();
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   const filteredReview = getFilteredReviewData();
   const filteredSalary = getFilteredSalaryData();
-  const selectedMonth = document.getElementById("monthFilter")?.value || "April 2026";
+  const selectedMonth = getPeriodLabel();
+  const reportDateLabel = getReportDateLabel(filteredReview);
   const isAttendance = type === "attendance-jpg";
   const isSalary = type === "salary-jpg";
   const format = type.endsWith("jpg") ? "image/jpeg" : "image/png";
@@ -1291,29 +1459,28 @@ function downloadReport(type) {
   };
   const drawCard = (x, y, width, height, radius = 22) => {
     ctx.save();
-    ctx.shadowColor = "rgba(148, 24, 84, 0.09)";
+    ctx.shadowColor = "rgba(30, 41, 59, 0.07)";
     ctx.shadowBlur = 24;
     ctx.shadowOffsetY = 10;
     roundRect(x, y, width, height, radius);
     ctx.fillStyle = "#ffffff";
     ctx.fill();
     ctx.restore();
-    ctx.strokeStyle = "#f2dbe7";
+    ctx.strokeStyle = theme.line;
     ctx.lineWidth = 1;
     ctx.stroke();
   };
-  const makePurpleGradient = (x, y, width, height) => {
+  const makeBrandGradient = (x, y, width, height) => {
     const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-    gradient.addColorStop(0, "#7c3aed");
-    gradient.addColorStop(0.55, "#6d28d9");
-    gradient.addColorStop(1, "#4c1d95");
+    gradient.addColorStop(0, theme.dark);
+    gradient.addColorStop(1, theme.primary);
     return gradient;
   };
   const drawSectionHeader = (x, y, width, titleText) => {
     roundRect(x + 18, y + 18, width - 36, 44, 16);
-    ctx.fillStyle = "#fbf1ff";
+    ctx.fillStyle = theme.soft;
     ctx.fill();
-    ctx.fillStyle = "#6d28d9";
+    ctx.fillStyle = theme.dark;
     ctx.font = "800 18px Inter, Arial, sans-serif";
     ctx.fillText(titleText, x + 38, y + 47);
   };
@@ -1350,9 +1517,9 @@ function downloadReport(type) {
     drawSectionHeader(x, y, width, tableTitle);
     const top = y + 76;
     roundRect(x + 14, top, width - 28, 38, 10);
-    ctx.fillStyle = "#f7f9fc";
+    ctx.fillStyle = theme.dark;
     ctx.fill();
-    ctx.fillStyle = "#334155";
+    ctx.fillStyle = "#ffffff";
     ctx.font = "800 12px Inter, Arial, sans-serif";
     columns.forEach((column) => ctx.fillText(column.label, x + 22 + column.left, top + 25));
     let rowY = top + 38;
@@ -1388,16 +1555,16 @@ function downloadReport(type) {
   const attendanceSummary = {
     workday: filteredSalary.reduce((sum, [, workday]) => sum + workday, 0),
     overtime: filteredSalary.reduce((sum, [, , overtime]) => sum + overtime, 0),
-    offday: Math.max(0, 30 - filteredReview.filter((row) => isPayrollWorkday(row)).length),
-    late: filteredReview.filter((row) => row.status.includes("Terlambat")).length,
+    offday: filteredSalary.reduce((sum, row) => sum + row[8], 0),
+    late: filteredSalary.reduce((sum, row) => sum + row[9], 0),
   };
-  const receiptRows = filteredSalary.map(([name, workday, overtime, base, meal, targetBonus, bonus, debt]) => {
+  const receiptRows = filteredSalary.map(([name, workday, overtime, base, meal, targetBonus, bonus, debt, offday], index) => {
     const items = [
       ["Gaji pokok", base],
       ["Konsumsi", meal],
       ["Bonus target", targetBonus],
       ["Bonus prorata", bonus],
-      [manualPayrollAddition.note || "Insentif Stock Manager", manualPayrollAddition.amount],
+      [manualPayrollAddition.note || "Tambahan manual", index === 0 ? manualPayrollAddition.amount : 0],
     ].filter(([, amount]) => amount);
     const subtotal = items.reduce((sum, [, amount]) => sum + amount, 0);
     const total = subtotal - debt;
@@ -1405,6 +1572,7 @@ function downloadReport(type) {
       name,
       workday,
       overtime,
+      offday,
       debt,
       items,
       subtotal,
@@ -1415,7 +1583,7 @@ function downloadReport(type) {
   const estimateStatusHeight = (status) => Math.max(34, 18 + wrapText(status, 18).length * 15);
   const attendanceHeightEstimate = 82 + 38 + attendanceRows.reduce((sum, row) => sum + estimateStatusHeight(row.status), 0) + 18;
   const summaryHeight = 118;
-  const receiptHeightEstimate = 74 + receiptRows.reduce((height, row) => height + (row.items.length + 3) * 32 + 18, 0) + 84;
+  const receiptHeightEstimate = 74 + receiptRows.reduce((height, row) => height + (row.items.length + 3) * 32 + 68, 0) + 84;
   const canvasHeight = 250 + attendanceHeightEstimate + 24 + summaryHeight + 34 + receiptHeightEstimate + 60;
 
   const exportScale = 4;
@@ -1424,28 +1592,35 @@ function downloadReport(type) {
   canvas.width = canvasWidth * exportScale;
   canvas.height = canvasLogicalHeight * exportScale;
   ctx.scale(exportScale, exportScale);
-  ctx.fillStyle = "#fae6f0";
+  ctx.fillStyle = theme.background;
   ctx.fillRect(0, 0, canvasWidth, canvasLogicalHeight);
   roundRect(24, 30, 720, 164, 30);
-  ctx.fillStyle = makePurpleGradient(24, 30, 720, 164);
+  ctx.fillStyle = makeBrandGradient(24, 30, 720, 164);
   ctx.fill();
-  roundRect(46, 52, 34, 34, 12);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
-  ctx.fill();
+  ctx.save();
+  roundRect(648, 48, 72, 72, 18);
+  ctx.clip();
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(648, 48, 72, 72);
+  ctx.drawImage(logo, 648, 48, 72, 72);
+  ctx.restore();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.76)";
+  ctx.font = "700 10px Inter, Arial, sans-serif";
+  ctx.fillText(`${theme.name.toUpperCase()}  /  ATTENDANCE & PAYROLL`, 48, 58);
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 34px Inter, Arial, sans-serif";
-  ctx.fillText(reportTitle, 96, 80);
-  ctx.font = "600 18px Inter, Arial, sans-serif";
+  ctx.font = "800 30px Inter, Arial, sans-serif";
+  ctx.fillText(reportTitle, 48, 97, 575);
+  ctx.font = "500 14px Inter, Arial, sans-serif";
   ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
-  ctx.fillText(`${selectedMonth} | Smart Attendance Converter`, 48, 122);
+  ctx.fillText(`${reportDateLabel}  ·  Laporan bulanan`, 48, 122, 575);
   roundRect(48, 138, 650, 34, 12);
-  ctx.fillStyle = "rgba(76, 29, 149, 0.38)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
   ctx.fill();
   ctx.fillStyle = "#ffffff";
   ctx.font = "800 14px Inter, Arial, sans-serif";
   const staffNames = filteredSalary.map(([name]) => name).filter(Boolean);
   const staffLabel = staffNames.length === 1 ? staffNames[0] : `${staffNames.length || 0} staff`;
-  ctx.fillText(`Staff ${staffLabel}`, 70, 160);
+  ctx.fillText(staffNames.length === 1 ? `Staff  ${staffLabel}` : `Tim  ${staffLabel}`, 64, 160, 620);
 
   const attendanceHeight = drawTable({
     title: isSalary ? "Preview Kehadiran Pendukung" : "Laporan Kehadiran",
@@ -1466,7 +1641,7 @@ function downloadReport(type) {
   const summaryY = 220 + attendanceHeight + 22;
   drawCard(34, summaryY, 700, summaryHeight, 24);
   [
-    ["Total hari kerja", attendanceSummary.workday + attendanceSummary.overtime, "#ecfdf5", "#059669"],
+    ["Hari hadir", attendanceSummary.workday, "#ecfdf5", "#059669"],
     ["Lembur", attendanceSummary.overtime, "#eff6ff", "#2563eb"],
     ["Libur", attendanceSummary.offday, "#fefce8", "#ca8a04"],
     ["Terlambat", attendanceSummary.late, "#fff1f2", "#e11d48"],
@@ -1491,6 +1666,14 @@ function downloadReport(type) {
 
   let currentY = receiptY + 78;
   receiptRows.forEach((row) => {
+    ctx.fillStyle = theme.dark;
+    ctx.font = "800 16px Inter, Arial, sans-serif";
+    ctx.fillText(row.name, 70, currentY, 600);
+    currentY += 22;
+    ctx.fillStyle = "#64748b";
+    ctx.font = "500 12px Inter, Arial, sans-serif";
+    ctx.fillText(`${row.workday} hadir  ·  ${row.offday} libur  ·  ${row.overtime} lembur`, 70, currentY);
+    currentY += 28;
     row.items.forEach(([label, amount]) => {
       ctx.fillStyle = "#334155";
       ctx.font = "600 15px Inter, Arial, sans-serif";
@@ -1502,7 +1685,7 @@ function downloadReport(type) {
     });
 
     roundRect(56, currentY - 8, 640, 54, 10);
-    ctx.fillStyle = makePurpleGradient(56, currentY - 8, 640, 54);
+    ctx.fillStyle = makeBrandGradient(56, currentY - 8, 640, 54);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
     ctx.font = "800 19px Inter, Arial, sans-serif";
@@ -1526,11 +1709,38 @@ function downloadReport(type) {
   ctx.fillText("Total Payroll", 70, currentY + 18);
   ctx.fillText(currency.format(totals.salary), 540, currentY + 18);
 
-  const link = document.createElement("a");
-  link.download = `${type}-${selectedMonth.toLowerCase().replaceAll(" ", "-")}.${extension}`;
-  link.href = canvas.toDataURL(format, 0.92);
-  link.click();
-  showToast(`${title} berhasil dibuat sebagai ${extension.toUpperCase()}.`);
+  return { canvas, format, extension, title, selectedMonth, reportDateLabel };
+}
+
+async function downloadReport(type, preview = false) {
+  if (!getFilteredSalaryData().length) return showToast("Upload data terlebih dahulu untuk membuat laporan.");
+  const buttons = document.querySelectorAll("[data-export], #previewReport");
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const { canvas, format, extension, title, selectedMonth, reportDateLabel } = await createReportCanvas(type);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, format, 0.92));
+    if (!blob) throw new Error("Gambar laporan gagal dibuat.");
+    const url = URL.createObjectURL(blob);
+    if (preview) {
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = url;
+      document.getElementById("reportPreviewImage").src = url;
+      document.getElementById("reportPreviewTitle").textContent = `${reportThemes[activeTheme].name} · ${reportDateLabel}`;
+      document.getElementById("reportPreviewDialog").showModal();
+    } else {
+      const link = document.createElement("a");
+      link.download = `${type}-${selectedMonth.toLowerCase().replaceAll(" ", "-")}.${extension}`;
+      link.href = url;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      showToast(`${title} berhasil dibuat sebagai ${extension.toUpperCase()}.`);
+    }
+  } catch (error) {
+    console.error(error);
+    showToast("Laporan gagal dibuat. Pastikan logo sudah termuat lalu coba lagi.");
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
 }
 
 function exportCorrectedReviewXls() {
@@ -1563,6 +1773,37 @@ function exportCorrectedReviewXls() {
 }
 
 function initActions() {
+  document.getElementById("editPayroll").addEventListener("click", openPayrollEditor);
+  document.getElementById("previewReport").addEventListener("click", () => downloadReport("all-png", true));
+  document.getElementById("closeReportPreview").addEventListener("click", () => document.getElementById("reportPreviewDialog").close());
+  document.getElementById("reportPreviewDialog").addEventListener("close", () => {
+    document.getElementById("reportPreviewImage").removeAttribute("src");
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  });
+  document.getElementById("payrollEditor").addEventListener("click", (event) => {
+    if (event.target.closest("#cancelPayroll")) closePayrollEditor();
+    if (event.target.closest("#resetPayroll")) {
+      getFilteredSalaryData().forEach(([name]) => payrollOverrides.delete(payrollOverrideKey(name)));
+      closePayrollEditor();
+      activeSalaryData = buildSalaryFromReview(activeReviewData);
+      renderBonusPreview();
+      renderExport();
+      showToast("Rekap dihitung ulang berdasarkan data absensi.");
+    }
+  });
+  document.getElementById("payrollEditor").addEventListener("change", (event) => {
+    const field = event.target.dataset.payrollField;
+    if (!["workday", "offday"].includes(field)) return;
+    const value = Number(event.target.value);
+    if (value < 0 || value > getPeriodDayCount()) return;
+    const otherField = field === "workday" ? "offday" : "workday";
+    event.target.closest("[data-payroll-name]").querySelector(`[data-payroll-field="${otherField}"]`).value = getPeriodDayCount() - value;
+  });
+  document.getElementById("payrollEditor").addEventListener("submit", (event) => {
+    event.preventDefault();
+    savePayrollEditor(event.target);
+  });
   document.addEventListener("click", (event) => {
     const reviewButton = event.target.closest("[data-review-action]");
     const cancelManualButton = event.target.closest("[data-manual-cancel]");
@@ -1645,11 +1886,16 @@ function initActions() {
   });
 
   document.getElementById("staffFilter")?.addEventListener("change", () => {
+    closePayrollEditor();
     renderExport();
     showToast("Preview export diperbarui berdasarkan staff terpilih.");
   });
 
   document.getElementById("monthFilter")?.addEventListener("change", () => {
+    closePayrollEditor();
+    activeSalaryData = buildSalaryFromReview(activeReviewData);
+    renderStaffFilter();
+    renderBonusPreview();
     renderExport();
     showToast("Preview export diperbarui berdasarkan bulan terpilih.");
   });
@@ -1736,6 +1982,7 @@ function initActions() {
     if (nameInput) nameInput.value = "";
     if (workdayInput) workdayInput.value = "";
     activeSalaryData = buildSalaryFromReview(activeReviewData);
+    renderStaffFilter();
     renderBonusPreview();
     renderExport();
     showToast(`${name} ditambahkan sebagai peserta bonus target.`);
@@ -1749,6 +1996,7 @@ function initActions() {
     excludedTargetBonusNames.add(name);
     manualTargetBonusParticipants = manualTargetBonusParticipants.filter((item) => item.name !== name);
     activeSalaryData = buildSalaryFromReview(activeReviewData);
+    renderStaffFilter();
     renderBonusPreview();
     renderExport();
     showToast(`${name} tidak diikutkan dalam pembagian bonus target.`);
@@ -1848,6 +2096,14 @@ function saveStaffRow(originalName, rowElement) {
   ];
 
   activeStaffData = activeStaffData.map((staff) => (staff[0] === originalName ? nextData : staff));
+  if (nextName !== originalName) {
+    for (const [key, value] of [...payrollOverrides]) {
+      if (key.slice(8) === originalName) {
+        payrollOverrides.set(`${key.slice(0, 8)}${nextName}`, value);
+        payrollOverrides.delete(key);
+      }
+    }
+  }
   activeReviewData = activeReviewData.map((item) => (item.name === originalName ? { ...item, name: nextName } : item));
   activeAttentionItems = activeAttentionItems.map((item) => (item.name === originalName ? { ...item, name: nextName } : item));
   editingStaffName = null;
@@ -2169,6 +2425,8 @@ function removeAttentionItem(rowId) {
 }
 
 function refreshDerivedViews() {
+  renderMonthFilter();
+  closePayrollEditor();
   activeSalaryData = buildSalaryFromReview(activeReviewData);
   renderReview();
   renderAttention();
@@ -2180,7 +2438,7 @@ function refreshDerivedViews() {
 
 document.querySelectorAll("[data-next], [data-step-target]").forEach((button) => {
   button.addEventListener("click", () => {
-    if (button.dataset.next === "review" && !uploadedRows.length) {
+    if (button.dataset.next === "review" && !activeReviewData.length) {
       showToast("Upload file absensi terlebih dahulu agar data dapat diproses.");
       return;
     }
@@ -2192,6 +2450,8 @@ document.querySelectorAll("[data-next], [data-step-target]").forEach((button) =>
   });
 });
 
+renderMonthFilter();
+initTheme();
 renderReview();
 renderAttention();
 renderStaff();
