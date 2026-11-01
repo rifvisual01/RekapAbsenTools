@@ -455,7 +455,7 @@ tbody tr:last-child td {
 
 .manual-payroll-addition {
   display: grid;
-  grid-template-columns: minmax(180px, 0.35fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(180px, 0.35fr) minmax(260px, 1fr) auto;
   gap: 12px;
   margin-top: 14px;
   padding: 14px;
@@ -463,6 +463,15 @@ tbody tr:last-child td {
   border-radius: 12px;
   background: #fbfcfd;
 }
+
+.manual-payroll-actions { display: flex; align-items: end; gap: 8px; align-self: end; }
+#addManualPayroll { min-width: 42px; font-size: 22px; line-height: 1; }
+.manual-payroll-saved { display: grid; gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
+.manual-payroll-saved:empty { display: none; }
+.manual-payroll-saved li { display: grid; grid-template-columns: minmax(120px, .35fr) minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfd; font-size: 13px; }
+.manual-payroll-saved li span { overflow-wrap: anywhere; color: var(--muted); }
+.manual-payroll-saved .chip-remove { grid-row: auto; }
+.manual-payroll-addition + .manual-payroll-saved + .field-help { margin-top: 10px; }
 
 .manual-payroll-addition label {
   gap: 6px;

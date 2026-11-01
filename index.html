@@ -359,7 +359,12 @@
                   Keterangan
                   <input id="manualPayrollNote" type="text" placeholder="Contoh: pengganti transport, koreksi kasbon, dll." />
                 </label>
+                <div class="manual-payroll-actions">
+                  <button class="btn btn-primary" id="addManualPayroll" type="button" aria-label="Simpan tambahan dan tambah baris" title="Simpan tambahan dan tambah baris">+</button>
+                  <button class="btn btn-secondary" id="resetManualPayroll" type="button">Reset</button>
+                </div>
               </div>
+              <ul class="manual-payroll-saved" id="manualPayrollSaved" aria-label="Tambahan manual tersimpan"></ul>
               <p class="field-help" id="manualPayrollPreview">Tambahan manual belum diisi.</p>
             </div>
           </div>

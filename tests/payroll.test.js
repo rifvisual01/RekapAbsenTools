@@ -66,3 +66,25 @@ test("adjustments stay isolated by month and reset restores source totals", () =
   run('payrollOverrides.delete(payrollOverrideKey("A")); true');
   assert.equal(run("buildSalaryFromReview(activeReviewData)")[0][1], 20);
 });
+
+test("multiple saved additions and the current draft are included exactly once", () => {
+  const run = session();
+  run(`manualPayrollAdditions = [{amount: 1250000, note: "Insentif"}, {amount: 250000, note: "PJ"}];
+    manualPayrollAddition = {amount: 50000, note: "Transport"}; true`);
+  assert.equal(run("getManualPayrollTotal()"), 1550000);
+  assert.equal(run("getManualPayrollItems().length"), 3);
+  assert.equal(run("manualPayrollAdditions.length"), 2);
+  run("manualPayrollAdditions.splice(1, 1); true");
+  assert.equal(run("getManualPayrollTotal()"), 1300000);
+  assert.equal(run("getManualPayrollItems()[1].note"), "Transport");
+});
+
+test("reset removes all saved additions and the current draft", () => {
+  const run = session();
+  run(`manualPayrollAdditions = [{amount: 1250000, note: "Insentif"}, {amount: 250000, note: "PJ"}];
+    manualPayrollAddition = {amount: 50000, note: "Transport"};
+    clearManualPayrollAdditions(); true`);
+  assert.equal(run("getManualPayrollTotal()"), 0);
+  assert.deepEqual(run("getManualPayrollItems()"), []);
+  assert.deepEqual(run("manualPayrollAddition"), {amount: 0, note: ""});
+});

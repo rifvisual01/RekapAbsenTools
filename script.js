@@ -27,6 +27,7 @@ let manualPayrollAddition = {
   amount: 0,
   note: "",
 };
+let manualPayrollAdditions = [];
 const dayNames = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const workRuleGroups = ["Hari Biasa", "Jumat"];
 let activeWorkRules = createDefaultWorkRules();
@@ -513,7 +514,7 @@ function renderExport() {
     },
     { staff: 0, workday: 0, overtime: 0, offday: 0, salary: 0 },
   );
-  const finalSalary = totals.salary + manualPayrollAddition.amount;
+  const finalSalary = totals.salary + getManualPayrollTotal();
   renderManualPayrollPreview();
   document.querySelector("#finalPreview h3").textContent = `Laporan Kehadiran & Rekap Gaji - ${getPeriodLabel()}`;
 
@@ -591,6 +592,7 @@ function initUpload() {
     activeSalaryData = [];
     activeStaffData = [];
     payrollOverrides.clear();
+    clearManualPayrollAdditions();
     closePayrollEditor();
     renderMonthFilter();
     renderReview();
@@ -738,6 +740,7 @@ function loadRows(parsedRows, sourceName) {
   activeAttentionItems = buildAttentionFromUpload(activeReviewData);
   activeStaffData = buildStaffFromReview(activeReviewData);
   payrollOverrides.clear();
+  clearManualPayrollAdditions();
   closePayrollEditor();
   renderMonthFilter();
   activeSalaryData = buildSalaryFromReview(activeReviewData);
@@ -951,14 +954,53 @@ function getProratedBonusNote(lateCount) {
 function renderManualPayrollPreview() {
   const preview = document.getElementById("manualPayrollPreview");
   if (!preview) return;
-
-  if (!manualPayrollAddition.amount && !manualPayrollAddition.note) {
+  document.getElementById("manualPayrollSaved").innerHTML = manualPayrollAdditions.map((item, index) => `
+    <li>
+      <strong>${currency.format(item.amount)}</strong>
+      <span>${escapeHtml(item.note || "Tambahan manual")}</span>
+      <button class="chip-remove" data-remove-manual-payroll="${index}" type="button" aria-label="Hapus tambahan ${escapeHtml(item.note || String(index + 1))}" title="Hapus baris ini">X</button>
+    </li>`).join("");
+  const items = getManualPayrollItems();
+  if (!items.length) {
     preview.textContent = "Tambahan manual belum diisi.";
     return;
   }
+  const draftLabel = manualPayrollAddition.amount ? " (termasuk baris yang sedang diisi)" : "";
+  preview.textContent = `${items.length} tambahan manual · Total ${currency.format(getManualPayrollTotal())}${draftLabel}`;
+}
 
-  const note = manualPayrollAddition.note || "Tanpa keterangan";
-  preview.textContent = `Tambahan manual: ${currency.format(manualPayrollAddition.amount)} - ${note}`;
+function getManualPayrollItems() {
+  return manualPayrollAddition.amount
+    ? [...manualPayrollAdditions, manualPayrollAddition]
+    : manualPayrollAdditions;
+}
+
+function getManualPayrollTotal() {
+  return getManualPayrollItems().reduce((sum, item) => sum + item.amount, 0);
+}
+
+function clearManualPayrollDraft() {
+  manualPayrollAddition = { amount: 0, note: "" };
+  document.getElementById("manualPayrollAmount").value = currency.format(0);
+  document.getElementById("manualPayrollNote").value = "";
+}
+
+function clearManualPayrollAdditions() {
+  manualPayrollAdditions = [];
+  clearManualPayrollDraft();
+}
+
+function addManualPayrollAddition() {
+  syncManualPayrollAdditionFromForm();
+  if (!manualPayrollAddition.amount) {
+    showToast("Isi nominal tambahan sebelum menambah baris.");
+    return;
+  }
+  manualPayrollAdditions.push({ ...manualPayrollAddition });
+  clearManualPayrollDraft();
+  renderExport();
+  document.getElementById("manualPayrollAmount").focus();
+  showToast("Tambahan disimpan. Isi baris berikutnya.");
 }
 
 function syncManualPayrollAdditionFromForm() {
@@ -1445,7 +1487,7 @@ async function createReportCanvas(type) {
     },
     { staff: 0, workday: 0, overtime: 0, targetBonus: 0, bonus: 0, gross: 0, debt: 0 },
   );
-  totals.gross += manualPayrollAddition.amount;
+  totals.gross += getManualPayrollTotal();
   totals.salary = totals.gross - totals.debt;
   const truncate = (value, max = 18) => {
     const text = String(value ?? "-");
@@ -1571,7 +1613,7 @@ async function createReportCanvas(type) {
       ["Konsumsi", meal],
       ["Bonus target", targetBonus],
       [`Bonus prorata (${getProratedBonusNote(late)})`, bonus],
-      [manualPayrollAddition.note || "Tambahan manual", index === 0 ? manualPayrollAddition.amount : 0],
+      ...(index === 0 ? getManualPayrollItems().map((item) => [item.note || "Tambahan manual", item.amount]) : []),
     ].filter(([, amount]) => amount);
     const subtotal = items.reduce((sum, [, amount]) => sum + amount, 0);
     const total = subtotal - debt;
@@ -1676,7 +1718,7 @@ async function createReportCanvas(type) {
     row.items.forEach(([label, amount]) => {
       ctx.fillStyle = "#334155";
       ctx.font = "600 15px Inter, Arial, sans-serif";
-      ctx.fillText(label, 70, currentY, 440);
+      ctx.fillText(`• ${label}`, 70, currentY, 440);
       ctx.fillStyle = amount < 0 ? "#dc2626" : "#111827";
       ctx.font = "700 15px Inter, Arial, sans-serif";
       ctx.fillText(currency.format(amount), 540, currentY);
@@ -1695,7 +1737,7 @@ async function createReportCanvas(type) {
     if (row.debt) {
       ctx.fillStyle = "#334155";
       ctx.font = "600 15px Inter, Arial, sans-serif";
-      ctx.fillText("Bon / potongan", 70, currentY);
+      ctx.fillText("• Bon / potongan", 70, currentY);
       ctx.fillStyle = "#dc2626";
       ctx.font = "700 15px Inter, Arial, sans-serif";
       ctx.fillText(`-${currency.format(row.debt)}`, 540, currentY);
@@ -1703,9 +1745,17 @@ async function createReportCanvas(type) {
     }
   });
 
-  ctx.fillStyle = "#111827";
-  ctx.font = "800 20px Inter, Arial, sans-serif";
+  ctx.beginPath();
+  ctx.moveTo(70, currentY - 6);
+  ctx.lineTo(698, currentY - 6);
+  ctx.strokeStyle = theme.line;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = "#334155";
+  ctx.font = "600 15px Inter, Arial, sans-serif";
   ctx.fillText("Total Payroll", 70, currentY + 18);
+  ctx.fillStyle = "#111827";
+  ctx.font = "700 15px Inter, Arial, sans-serif";
   ctx.fillText(currency.format(totals.salary), 540, currentY + 18);
 
   return { canvas, format, extension, title, selectedMonth, reportDateLabel };
@@ -1772,6 +1822,19 @@ function exportCorrectedReviewXls() {
 }
 
 function initActions() {
+  document.getElementById("addManualPayroll").addEventListener("click", addManualPayrollAddition);
+  document.getElementById("resetManualPayroll").addEventListener("click", () => {
+    clearManualPayrollAdditions();
+    renderExport();
+    showToast("Semua tambahan manual sudah dikosongkan.");
+  });
+  document.getElementById("manualPayrollSaved").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-manual-payroll]");
+    if (!button) return;
+    manualPayrollAdditions.splice(Number(button.dataset.removeManualPayroll), 1);
+    renderExport();
+    showToast("Baris tambahan dihapus.");
+  });
   document.getElementById("editPayroll").addEventListener("click", openPayrollEditor);
   document.getElementById("previewReport").addEventListener("click", () => downloadReport("all-png", true));
   document.getElementById("closeReportPreview").addEventListener("click", () => document.getElementById("reportPreviewDialog").close());

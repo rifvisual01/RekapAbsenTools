@@ -77,6 +77,8 @@ Data contoh tidak lagi ditampilkan sebagai data kerja aktif. Nama staff akan dia
 
 - Pilih **Pizzain (merah)** atau **Fresin (biru)** di area pilih file pada langkah Upload. Logo dan warna mengikuti pilihan ini pada aplikasi dan gambar laporan. Pilihan tema disimpan di browser.
 - Pada langkah Export, **Preview Laporan** di sebelah tombol Export membuka gambar hasil laporan tanpa mengunduh. Preview dan export menggunakan renderer yang sama.
+- Isi nominal dan keterangan **Tambahan Manual**, lalu klik **+** untuk menyimpan baris dan mengisi tambahan berikutnya. Setiap baris tersimpan memiliki chip **X** untuk menghapusnya; **Reset** mengosongkan seluruh tambahan dan kolom input. Semua tambahan dijumlahkan satu kali dalam subtotal laporan. Baris yang sedang diisi juga masuk preview dan export.
+- Rincian gaji, bonus, tambahan manual, dan bon pada laporan memakai bullet. Garis memisahkan potongan dengan total akhir, yang memakai ukuran dan ketebalan teks sama dengan rincian gaji.
 - Kolom **Libur** mengikuti jumlah hari kalender pada bulan data, dikurangi hari hadir. Filter bulan mengikuti periode di file dan membatasi absensi serta perhitungan gaji.
 - Klik ikon pulpen di ujung card **Preview Rekap Gaji** untuk mengoreksi hadir, libur, lembur, dan terlambat. Hadir dan libur saling menyesuaikan; lembur dan terlambat tidak boleh melebihi hari hadir.
 - **Simpan & Hitung Ulang** memperbarui gaji pokok, konsumsi, bonus prorata, dan pembagian bonus target seluruh peserta. Rumus tetap memakai hadir + lembur, pembagi gaji bulanan 30, serta aturan pengurang bonus karena terlambat yang sudah ada.
