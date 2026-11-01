@@ -75,6 +75,10 @@ Data contoh tidak lagi ditampilkan sebagai data kerja aktif. Nama staff akan dia
 
 ## Tema, Preview, dan Koreksi Rekap
 
+Pilih **Laporan Manual** pada halaman awal untuk membuat laporan satu staff tanpa file absensi. Isi nama, bulan, dan nominal gaji, bonus, uang makan, serta bon. Hari kerja, libur, lembur, dan terlambat bersifat opsional: kosong berarti tidak ditampilkan, sedangkan angka `0` tetap ditampilkan. Laporan manual selalu menyembunyikan tabel absensi harian. Jika seluruh data hari kosong, tidak ada card keterangan hari pada gambar laporan.
+
+Pilihan **Nominal akhir langsung** memakai nominal sesuai input tanpa prorata atau pemotongan bonus karena terlambat. Pilihan **Hitung prorata dari hari kerja** memakai gaji dan bonus untuk 30 hari, uang makan per hari, dan total hari kerja + lembur. Keterlambatan yang diisi menentukan persentase bonus. Hari kerja wajib untuk pilihan ini. Klik **Buat Laporan Manual** untuk melanjutkan ke tambahan manual, preview, dan export. Ikon pulpen atau **Kembali ke Input Manual** membuka form untuk mengedit laporan. Pilihan **Dari File Absensi** kembali ke alur upload.
+
 - Pilih **Pizzain (merah)** atau **Fresin (biru)** di area pilih file pada langkah Upload. Logo dan warna mengikuti pilihan ini pada aplikasi dan gambar laporan. Pilihan tema disimpan di browser.
 - Pada langkah Export, **Preview Laporan** di sebelah tombol Export membuka gambar hasil laporan tanpa mengunduh. Preview dan export menggunakan renderer yang sama.
 - Isi nominal dan keterangan **Tambahan Manual**, lalu klik **+** untuk menyimpan baris dan mengisi tambahan berikutnya. Setiap baris tersimpan memiliki chip **X** untuk menghapusnya; **Reset** mengosongkan seluruh tambahan dan kolom input. Semua tambahan dijumlahkan satu kali dalam subtotal laporan. Baris yang sedang diisi juga masuk preview dan export.

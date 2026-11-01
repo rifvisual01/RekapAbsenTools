@@ -88,3 +88,26 @@ test("reset removes all saved additions and the current draft", () => {
   assert.deepEqual(run("getManualPayrollItems()"), []);
   assert.deepEqual(run("manualPayrollAddition"), {amount: 0, note: ""});
 });
+
+test("manual final amounts are used directly without attendance or lateness deductions", () => {
+  const run = session();
+  const row = run(`buildManualSalary({name:"Manual", calculation:"direct", workday:null, overtime:null, offday:null, late:null, base:1500000, bonus:400000, meal:300000, debt:100000})`);
+  assert.deepEqual(row, ["Manual", null, null, 1500000, 300000, 0, 400000, 100000, null, null]);
+  assert.equal(run(`buildManualSalary({name:"Manual", calculation:"direct", workday:20, overtime:2, offday:11, late:6, base:1500000, bonus:400000, meal:300000, debt:0})[6]`), 400000);
+});
+
+test("manual prorata uses workdays plus overtime and the late multiplier", () => {
+  const run = session();
+  const row = run(`buildManualSalary({name:"Manual", calculation:"prorata", workday:29, overtime:4, offday:2, late:6, base:1200000, bonus:400000, meal:10000, debt:100000})`);
+  assert.equal(row[3], 1320000);
+  assert.equal(row[4], 330000);
+  assert.equal(row[6], 352000);
+});
+
+test("manual day chips omit blanks while preserving an explicitly entered zero", () => {
+  const run = session();
+  run(`reportSource = "manual"; manualReport = {workday:null,overtime:null,offday:null,late:null}; true`);
+  assert.deepEqual(run("getReportSummaryChips({})"), []);
+  run(`manualReport = {workday:27,overtime:3,offday:null,late:0}; true`);
+  assert.deepEqual(run("getReportSummaryChips({}).map(([label,value])=>[label,value])"), [["Total hari hadir",30],["Lembur",3],["Terlambat",0]]);
+});

@@ -1,4 +1,80 @@
 const steps = ["upload", "review", "setting", "export"];
+let reportSource = "file";
+let manualReport = null;
+
+function buildManualSalary(report) {
+  const days = (report.workday ?? 0) + (report.overtime ?? 0);
+  const prorata = report.calculation === "prorata";
+  return [report.name, report.workday, report.overtime,
+    prorata ? calculateProratedBase(report.base, days) : report.base,
+    prorata ? report.meal * days : report.meal, 0,
+    prorata ? calculateProratedBonus(report.bonus, days, report.late ?? 0) : report.bonus,
+    report.debt, report.offday, report.late];
+}
+
+function setReportSource(source) {
+  reportSource = source;
+  const manual = source === "manual";
+  document.body.classList.toggle("manual-report-mode", manual);
+  document.getElementById("manualReportCard").hidden = !manual;
+  document.getElementById("useManualReport").setAttribute("aria-pressed", String(manual));
+  document.getElementById("useFileReport").setAttribute("aria-pressed", String(!manual));
+  document.getElementById("useManualReport").className = `btn btn-${manual ? "primary" : "secondary"}`;
+  document.getElementById("useFileReport").className = `btn btn-${manual ? "secondary" : "primary"}`;
+  document.querySelector('#upload .section-head h2').textContent = manual ? "Buat Laporan Manual" : "Upload Data Mentah";
+  document.querySelector('#upload .section-head p:not(.eyebrow)').textContent = manual ? "Isi data rekap dan nominal gaji tanpa file absensi harian." : "Upload file Excel mentah dari mesin kasir untuk diproses menjadi laporan kehadiran.";
+  const back = document.querySelector('#export [data-next]');
+  back.dataset.next = manual ? "upload" : "setting";
+  back.textContent = manual ? "Kembali ke Input Manual" : "Kembali ke Setting";
+  document.querySelectorAll('[data-step-target="review"], [data-step-target="setting"]').forEach((button) => { button.disabled = manual; });
+  renderMonthFilter();
+  if (!manual) activeSalaryData = buildSalaryFromReview(activeReviewData);
+  renderStaffFilter();
+  renderExport();
+  setStep("upload");
+}
+
+function saveManualReport(form) {
+  const data = new FormData(form);
+  const day = (key) => String(data.get(key)).trim() === "" ? null : Number(data.get(key));
+  const report = {
+    name: String(data.get("name")).trim(), period: String(data.get("period")),
+    calculation: data.get("calculation"), workday: day("workday"), offday: day("offday"),
+    overtime: day("overtime"), late: day("late"),
+    base: parseCurrencyInput(data.get("base")), bonus: parseCurrencyInput(data.get("bonus")),
+    meal: parseCurrencyInput(data.get("meal")), debt: parseCurrencyInput(data.get("debt")),
+  };
+  const error = document.getElementById("manualReportError");
+  const [year, month] = report.period.split("-").map(Number);
+  const limit = new Date(year, month, 0).getDate();
+  error.textContent = "";
+  if (!report.name || !/^\d{4}-\d{2}$/.test(report.period) || month < 1 || month > 12) {
+    error.textContent = "Isi nama staff dan bulan laporan yang valid."; return;
+  }
+  if ([report.workday, report.offday, report.overtime, report.late].some((value) => value !== null && (!Number.isInteger(value) || value < 0 || value > limit))) {
+    error.textContent = `Data hari harus bilangan bulat antara 0 dan ${limit}.`; return;
+  }
+  if (report.workday !== null && ((report.offday !== null && report.workday + report.offday !== limit) || (report.overtime ?? 0) > report.workday || (report.late ?? 0) > report.workday)) {
+    error.textContent = `Jika hadir dan libur diisi, jumlahnya harus ${limit} hari. Lembur dan terlambat tidak boleh melebihi hari kerja.`; return;
+  }
+  if (report.calculation === "prorata" && report.workday === null) {
+    error.textContent = "Isi hari kerja untuk menghitung prorata, atau pilih Nominal akhir langsung."; return;
+  }
+  manualReport = report;
+  renderMonthFilter(); renderStaffFilter(); renderExport(); setStep("export");
+  showToast("Laporan manual siap dipreview dan diexport.");
+}
+
+function getReportSummaryChips(summary) {
+  const values = reportSource === "manual" ? manualReport : null;
+  const chips = [
+    ["Total hari hadir", values ? (values.workday === null ? null : values.workday + (values.overtime ?? 0)) : summary.workday + summary.overtime, "#ecfdf5", "#059669"],
+    ["Lembur", values ? values.overtime : summary.overtime, "#eff6ff", "#2563eb"],
+    ["Libur", values ? values.offday : summary.offday, "#fefce8", "#ca8a04"],
+    ["Terlambat", values ? values.late : summary.late, "#fff1f2", "#e11d48"],
+  ];
+  return reportSource === "manual" && !values ? [] : chips.filter(([, value]) => value !== null);
+}
 let uploadedRows = [];
 let activeReviewData = [];
 let activeAttentionItems = [];
@@ -59,6 +135,7 @@ function createDefaultWorkRules() {
 }
 
 function setStep(nextStep) {
+  if (reportSource === "manual" && ["review", "setting"].includes(nextStep)) nextStep = "upload";
   if (nextStep !== "export") closePayrollEditor();
   const activeIndex = steps.indexOf(nextStep);
 
@@ -366,6 +443,7 @@ function getRowPeriod(row) {
 }
 
 function getSelectedPeriod() {
+  if (reportSource === "manual") return manualReport?.period || document.querySelector('#manualReportForm [name="period"]').value;
   return document.getElementById("monthFilter").value;
 }
 
@@ -381,7 +459,8 @@ function getPeriodRows(rows = activeReviewData) {
 function renderMonthFilter() {
   const filter = document.getElementById("monthFilter");
   const previous = filter.value;
-  const periods = [...new Set(activeReviewData.map(getRowPeriod).filter(Boolean))].sort();
+  const periods = reportSource === "manual" ? [getSelectedPeriod()] : [...new Set(activeReviewData.map(getRowPeriod).filter(Boolean))].sort();
+  filter.disabled = reportSource === "manual";
   if (!periods.length) {
     const now = new Date();
     periods.push(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
@@ -439,12 +518,14 @@ function initTheme() {
 }
 
 function getFilteredReviewData() {
+  if (reportSource === "manual") return [];
   const selectedStaff = getSelectedStaff();
   const rows = getPeriodRows();
   return selectedStaff ? rows.filter((row) => row.name === selectedStaff) : rows;
 }
 
 function getFilteredSalaryData() {
+  if (reportSource === "manual") return manualReport ? [buildManualSalary(manualReport)] : [];
   const selectedStaff = getSelectedStaff();
   return selectedStaff ? activeSalaryData.filter(([name]) => name === selectedStaff) : activeSalaryData;
 }
@@ -452,6 +533,14 @@ function getFilteredSalaryData() {
 function renderExport() {
   const filteredReview = getFilteredReviewData();
   const filteredSalary = getFilteredSalaryData();
+  const manual = reportSource === "manual";
+  document.getElementById("attendanceRows").closest(".card").hidden = manual;
+  document.getElementById("staffFilter").disabled = manual;
+  const salaryHeadings = document.getElementById("salaryRows").closest("table").querySelectorAll("th");
+  const direct = manual && manualReport?.calculation === "direct";
+  salaryHeadings[4].textContent = direct ? "Gaji Pokok" : "Gaji Pokok Prorata";
+  salaryHeadings[7].textContent = direct ? "Bonus" : "Bonus Prorata";
+  document.querySelector('#export .section-head p:not(.eyebrow)').textContent = manual ? "Periksa rekap manual, tambahkan rincian lain bila perlu, lalu preview atau export laporan." : "Pilih staff dan bulan, lalu simpan laporan sebagai gambar.";
 
   document.getElementById("attendanceRows").innerHTML = filteredReview.length
     ? filteredReview
@@ -487,13 +576,13 @@ function renderExport() {
       return `
         <tr>
           <td>${escapeHtml(name)}${payrollOverrides.has(payrollOverrideKey(name)) ? '<small class="salary-adjusted">Disesuaikan manual</small>' : ""}</td>
-          <td>${workday}</td>
-          <td>${offday}</td>
-          <td>${overtime}</td>
+          <td>${workday ?? "—"}</td>
+          <td>${offday ?? "—"}</td>
+          <td>${overtime ?? "—"}</td>
           <td>${currency.format(base)}</td>
           <td>${currency.format(meal)}</td>
           <td>${currency.format(targetBonus)}</td>
-          <td>${currency.format(bonus)}<small class="bonus-details">(${getProratedBonusNote(late)})</small></td>
+          <td>${currency.format(bonus)}${(!manual || manualReport?.calculation === "prorata") && late !== null ? `<small class="bonus-details">(${getProratedBonusNote(late)})</small>` : ""}</td>
           <td>${currency.format(debt)}</td>
           <td>${currency.format(totalBeforeDebt)}</td>
           <td><strong>${currency.format(totalAfterDebt)}</strong></td>
@@ -516,13 +605,11 @@ function renderExport() {
   );
   const finalSalary = totals.salary + getManualPayrollTotal();
   renderManualPayrollPreview();
-  document.querySelector("#finalPreview h3").textContent = `Laporan Kehadiran & Rekap Gaji - ${getPeriodLabel()}`;
+  document.querySelector("#finalPreview h3").textContent = `${manual ? "Rekap Gaji Manual" : "Laporan Kehadiran & Rekap Gaji"} - ${getPeriodLabel()}`;
 
   document.querySelector(".preview-summary").innerHTML = `
     <span>${totals.staff} staff</span>
-    <span>${totals.workday} hari kerja</span>
-    <span>${totals.offday} libur</span>
-    <span>${totals.overtime} lembur</span>
+    ${manual ? getReportSummaryChips(totals).map(([label, value]) => `<span>${value} ${label.toLowerCase()}</span>`).join("") : `<span>${totals.workday} hari kerja</span><span>${totals.offday} libur</span><span>${totals.overtime} lembur</span>`}
     <strong>${currency.format(finalSalary)}</strong>
   `;
 }
@@ -1036,7 +1123,7 @@ function renderStaffFilter() {
   if (!filter) return;
 
   const previous = filter.value;
-  const names = [...new Set(activeSalaryData.map(([name]) => name))];
+  const names = reportSource === "manual" ? (manualReport ? [manualReport.name] : []) : [...new Set(activeSalaryData.map(([name]) => name))];
   filter.innerHTML = [
     `<option>Semua Staff</option>`,
     ...names.map((name) => `<option>${escapeHtml(name)}</option>`),
@@ -1403,6 +1490,7 @@ function closePayrollEditor() {
 }
 
 function openPayrollEditor() {
+  if (reportSource === "manual") { setStep("upload"); document.getElementById("manualReportCard").scrollIntoView({behavior: "smooth"}); return; }
   const rows = getFilteredSalaryData();
   if (!rows.length) return showToast("Upload data terlebih dahulu untuk mengedit rekap gaji.");
   const editor = document.getElementById("payrollEditor");
@@ -1612,7 +1700,7 @@ async function createReportCanvas(type) {
       ["Gaji pokok", base],
       ["Konsumsi", meal],
       ["Bonus target", targetBonus],
-      [`Bonus prorata (${getProratedBonusNote(late)})`, bonus],
+      [reportSource === "manual" && manualReport.calculation === "direct" ? "Bonus" : `Bonus prorata${late === null ? "" : ` (${getProratedBonusNote(late)})`}`, bonus],
       ...(index === 0 ? getManualPayrollItems().map((item) => [item.note || "Tambahan manual", item.amount]) : []),
     ].filter(([, amount]) => amount);
     const subtotal = items.reduce((sum, [, amount]) => sum + amount, 0);
@@ -1630,14 +1718,18 @@ async function createReportCanvas(type) {
     };
   });
   const estimateStatusHeight = (status) => Math.max(34, 18 + wrapText(status, 18).length * 15);
-  const attendanceHeightEstimate = 82 + 38 + attendanceRows.reduce((sum, row) => sum + estimateStatusHeight(row.status), 0) + 18;
+  const showAttendance = reportSource !== "manual";
+  const summaryChips = getReportSummaryChips(attendanceSummary);
+  const attendanceHeightEstimate = showAttendance ? 82 + 38 + attendanceRows.reduce((sum, row) => sum + estimateStatusHeight(row.status), 0) + 18 : 0;
   const summaryHeight = 118;
   const receiptHeightEstimate = 86 + receiptRows.reduce((height, row) => height + (row.items.length + 3) * 32 + 18, 0) + 84;
-  const canvasHeight = 250 + attendanceHeightEstimate + 24 + summaryHeight + 34 + receiptHeightEstimate + 60;
+  const summaryY = 220 + (showAttendance ? attendanceHeightEstimate + 22 : 0);
+  const receiptY = summaryY + (summaryChips.length ? summaryHeight + 34 : 0);
+  const canvasHeight = receiptY + receiptHeightEstimate + 40;
 
   const exportScale = 4;
   const canvasWidth = 780;
-  const canvasLogicalHeight = Math.max(canvasHeight, 900);
+  const canvasLogicalHeight = showAttendance ? Math.max(canvasHeight, 900) : canvasHeight;
   canvas.width = canvasWidth * exportScale;
   canvas.height = canvasLogicalHeight * exportScale;
   ctx.scale(exportScale, exportScale);
@@ -1671,7 +1763,7 @@ async function createReportCanvas(type) {
   const staffLabel = staffNames.length === 1 ? staffNames[0] : `${staffNames.length || 0} staff`;
   ctx.fillText(staffNames.length === 1 ? `Staff  ${staffLabel}` : `Tim  ${staffLabel}`, 64, 160, 620);
 
-  const attendanceHeight = drawTable({
+  if (showAttendance) drawTable({
     title: isSalary ? "Preview Kehadiran Pendukung" : "Laporan Kehadiran",
     x: 34,
     y: 220,
@@ -1687,29 +1779,26 @@ async function createReportCanvas(type) {
     rows: isSalary ? attendanceRows : attendanceRows,
   });
 
-  const summaryY = 220 + attendanceHeight + 22;
+  if (summaryChips.length) {
   drawCard(34, summaryY, 700, summaryHeight, 24);
-  [
-    ["Total hari hadir", attendanceSummary.workday + attendanceSummary.overtime, "#ecfdf5", "#059669"],
-    ["Lembur", attendanceSummary.overtime, "#eff6ff", "#2563eb"],
-    ["Libur", attendanceSummary.offday, "#fefce8", "#ca8a04"],
-    ["Terlambat", attendanceSummary.late, "#fff1f2", "#e11d48"],
-  ].forEach(([label, value, bgColor, accentColor], index) => {
-    const boxX = 54 + index * 166;
-    roundRect(boxX, summaryY + 18, 146, 82, 18);
+  summaryChips.forEach(([label, value, bgColor, accentColor], index) => {
+    const columnWidth = 664 / summaryChips.length;
+    const boxWidth = columnWidth - 20;
+    const boxX = 54 + index * columnWidth;
+    roundRect(boxX, summaryY + 18, boxWidth, 82, 18);
     ctx.fillStyle = bgColor;
     ctx.fill();
     ctx.textAlign = "center";
     ctx.fillStyle = accentColor;
     ctx.font = "700 11px Inter, Arial, sans-serif";
-    ctx.fillText(label.toUpperCase(), boxX + 73, summaryY + 42);
+    ctx.fillText(label.toUpperCase(), boxX + boxWidth / 2, summaryY + 42);
     ctx.fillStyle = "#111827";
     ctx.font = "800 26px Inter, Arial, sans-serif";
-    ctx.fillText(String(value), boxX + 73, summaryY + 78);
+    ctx.fillText(String(value), boxX + boxWidth / 2, summaryY + 78);
     ctx.textAlign = "left";
   });
+  }
 
-  const receiptY = summaryY + summaryHeight + 34;
   drawCard(34, receiptY, 700, receiptHeightEstimate, 24);
   drawSectionHeader(34, receiptY, 700, "Rekap Gaji");
 
@@ -1762,7 +1851,7 @@ async function createReportCanvas(type) {
 }
 
 async function downloadReport(type, preview = false) {
-  if (!getFilteredSalaryData().length) return showToast("Upload data terlebih dahulu untuk membuat laporan.");
+  if (!getFilteredSalaryData().length) return showToast("Upload data atau isi laporan manual terlebih dahulu.");
   const buttons = document.querySelectorAll("[data-export], #previewReport");
   buttons.forEach((button) => { button.disabled = true; });
   try {
@@ -1822,6 +1911,17 @@ function exportCorrectedReviewXls() {
 }
 
 function initActions() {
+  const manualForm = document.getElementById("manualReportForm");
+  const now = new Date();
+  manualForm.elements.period.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  document.getElementById("useManualReport").addEventListener("click", () => setReportSource("manual"));
+  document.getElementById("useFileReport").addEventListener("click", () => setReportSource("file"));
+  manualForm.addEventListener("submit", (event) => { event.preventDefault(); saveManualReport(manualForm); });
+  manualForm.elements.calculation.addEventListener("change", () => {
+    document.getElementById("manualCalculationHelp").textContent = manualForm.elements.calculation.value === "direct"
+      ? "Isi nominal akhir yang akan diterima. Gaji, bonus, dan uang makan dipakai persis sesuai input, tanpa prorata atau pengurangan karena terlambat."
+      : "Isi gaji dan bonus untuk 30 hari, serta uang makan per hari. Sistem memakai hari kerja + lembur, lalu mengurangi bonus sesuai keterlambatan jika diisi. Hari kerja wajib diisi.";
+  });
   document.getElementById("addManualPayroll").addEventListener("click", addManualPayrollAddition);
   document.getElementById("resetManualPayroll").addEventListener("click", () => {
     clearManualPayrollAdditions();

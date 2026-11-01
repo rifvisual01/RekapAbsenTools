@@ -61,6 +61,10 @@
             <button class="btn btn-secondary" id="resetFile" type="button">Reset File</button>
           </div>
 
+          <div class="report-source" role="group" aria-label="Sumber laporan">
+            <button class="btn btn-primary" id="useFileReport" type="button" aria-pressed="true">Dari File Absensi</button>
+            <button class="btn btn-secondary" id="useManualReport" type="button" aria-pressed="false">Laporan Manual</button>
+          </div>
           <div class="card work-rules-card">
             <div class="card-head">
               <div>
@@ -108,6 +112,28 @@
             </div>
           </div>
 
+          <div class="card" id="manualReportCard" hidden>
+            <div class="card-head"><h3>Isi Laporan Manual</h3></div>
+            <p class="field-help">Buat rekap tanpa absensi harian. Kosongkan data hari yang tidak ingin ditampilkan; angka 0 tetap ditampilkan. Tambahan lain dapat diisi pada langkah Export.</p>
+            <form id="manualReportForm">
+              <div class="manual-report-grid">
+                <label>Nama Staff<input name="name" required maxlength="80" placeholder="Nama staff" /></label>
+                <label>Bulan Laporan<input name="period" type="month" required /></label>
+                <label>Perhitungan<select name="calculation"><option value="direct">Nominal akhir langsung</option><option value="prorata">Hitung prorata dari hari kerja</option></select></label>
+                <label>Hari Kerja (opsional)<input name="workday" type="number" min="0" max="31" step="1" placeholder="Kosongkan bila tidak ditampilkan" /></label>
+                <label>Libur (opsional)<input name="offday" type="number" min="0" max="31" step="1" placeholder="Tidak ditampilkan" /></label>
+                <label>Lembur (opsional)<input name="overtime" type="number" min="0" max="31" step="1" placeholder="Tidak ditampilkan" /></label>
+                <label>Terlambat (opsional)<input name="late" type="number" min="0" max="31" step="1" placeholder="Tidak ditampilkan" /></label>
+                <label>Gaji Pokok<input name="base" class="money-input" inputmode="numeric" placeholder="Rp 0" /></label>
+                <label>Bonus<input name="bonus" class="money-input" inputmode="numeric" placeholder="Rp 0" /></label>
+                <label>Uang Makan<input name="meal" class="money-input" inputmode="numeric" placeholder="Rp 0" /></label>
+                <label>Bon / Potongan<input name="debt" class="money-input" inputmode="numeric" placeholder="Rp 0" /></label>
+              </div>
+              <p class="field-help" id="manualCalculationHelp">Isi nominal akhir yang akan diterima. Gaji, bonus, dan uang makan dipakai persis sesuai input, tanpa prorata atau pengurangan karena terlambat.</p>
+              <p class="payroll-error" id="manualReportError" role="alert"></p>
+              <div class="actions process-manual-actions"><button class="btn btn-primary" type="submit">Buat Laporan Manual</button></div>
+            </form>
+          </div>
           <div class="actions process-actions">
             <button class="btn btn-primary" data-next="review" type="button">Proses Data</button>
           </div>
